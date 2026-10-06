@@ -1290,7 +1290,9 @@ async function pull(manual, preferRemote) {
     setSync('busy', '시트 불러오는 중');
     const r = await api('load');
     if (!r.ok) throw new Error(r.error === 'auth' ? '비밀번호가 맞지 않아요' : (r.message || r.error));
-    const pending = diffOps(state, S.synced), layoutPending = S.synced && hash(JSON.stringify(layoutOf(state))) !== S.synced.layoutHash;
+    // preferRemote: 시트 쪽을 그대로 쓰고 이 브라우저에서 바뀐 것은 버린다
+    const pending = preferRemote ? diffOps(state, null) : diffOps(state, S.synced);
+    const layoutPending = !preferRemote && S.synced && hash(JSON.stringify(layoutOf(state))) !== S.synced.layoutHash;
     const remoteMoved = r.version !== (S.synced ? S.synced.version : -1);
     let base = r.layout || state;   // 시트에 배치가 아직 없으면 지금 배치를 그대로
     if (layoutPending && !remoteMoved && !preferRemote) base = state;
