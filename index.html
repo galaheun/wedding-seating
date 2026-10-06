@@ -1188,7 +1188,9 @@ function diffOps(s, base) {
     });
   }
   for (const g of S.guests) {
-    const cur = tableOfGuest(s, g.key), was = g.key in base.assign ? base.assign[g.key] : g.table;
+    // 마지막으로 맞춘 때 몰랐던 하객(시트에서 새로 생기거나 이름이 바뀐 줄)은 이 편집기가 바꾼 것이 아니므로 건드리지 않는다
+    if (!(g.key in base.assign)) continue;
+    const cur = tableOfGuest(s, g.key), was = base.assign[g.key];
     if (cur !== was) ops.assign.push({ key: g.key, table: cur });
   }
   for (const t of s.tables) {
@@ -1331,6 +1333,16 @@ function schedulePush(now) {
   setSync('busy', '시트에 적는 중');
   pushTimer = setTimeout(push, now ? 0 : 700);
 }
+// 한 번에 많이 바뀌는 것은 적기 전에 묻는다 (배정 비우기, 이름 바꾸기, 새 하객 추가 5건 이상)
+async function confirmBig(ops) {
+  const drops = ops.assign.filter(o => o.table == null).length, ren = ops.rename.length, add = ops.add.length;
+  if (drops < 5 && ren < 5 && add < 5) return true;
+  const lines = [drops >= 5 && `배정 테이블 비우기 ${drops}줄`, ren >= 5 && `하객 성명 바꾸기 ${ren}줄`, add >= 5 && `새 하객 줄 추가 ${add}줄`].filter(Boolean);
+  const v = await ask('시트를 한꺼번에 많이 바꾸려고 해요', `${lines.join(', ')}.\n직접 바꾼 것이 맞으면 "시트에 적기", 아니면 "시트 다시 불러오기" 를 누르세요 (이 브라우저의 바뀐 것은 버려요).`,
+    [{ v: 'yes', label: '시트에 적기', cls: 'danger' }, { v: 'no', label: '시트 다시 불러오기', cls: 'primary' }]);
+  if (v === 'yes') { S.massOk = drops >= 5; return true; }
+  return false;
+}
 async function push(force) {
   if (!S.on) return;
   if (S.busy) { S.again = true; return; }
@@ -1338,12 +1350,24 @@ async function push(force) {
   const ops = diffOps(state, S.synced), layout = layoutOf(state), lh = hash(JSON.stringify(layout));
   const sendLayout = !S.synced || lh !== S.synced.layoutHash || force;
   if (!opCount(ops) && !sendLayout) { setSync('ok', '시트 저장됨'); return; }
+  S.busy = true;   // 묻는 동안 다른 저장이 끼어들지 않게
+  const okBig = force || S.bigOk || await confirmBig(ops);
+  S.bigOk = false;
+  if (!okBig) { S.busy = false; S.again = false; return pull(true, true); }
   const send = { assign: ops.assign, tables: ops.tables, rename: ops.rename,
     comp: ops.comp.map(({ key, comp }) => ({ key, comp })), add: ops.add.map(({ tmp, name, side, table }) => ({ tmp, name, side, table })) };
-  S.busy = true;
   const snap = snapshot(state);
   try {
-    const r = await api('sync', { ops: send, layout: sendLayout ? layout : undefined, baseVersion: S.version, by: S.who, force: !!force });
+    const r = await api('sync', { ops: send, layout: sendLayout ? layout : undefined, baseVersion: S.version, by: S.who, force: !!force, confirmMass: !!S.massOk });
+    S.massOk = false;
+    if (!r.ok && r.error === 'mass_unassign') {
+      // 시트 쪽 안전장치: 한 번에 많이 빼는 요청은 사람이 확인해야 적는다
+      S.busy = false;
+      const v = await ask('정말 빼시겠어요?', `시트에서 하객 ${r.count}줄의 배정 테이블을 한꺼번에 비우려고 해요.\n직접 뺀 것이 아니면 "시트 배정 다시 불러오기" 를 누르세요.`,
+        [{ v: 'yes', label: '네, 비우기', cls: 'danger' }, { v: 'no', label: '시트 배정 다시 불러오기', cls: 'primary' }]);
+      if (v === 'yes') { S.massOk = true; S.bigOk = true; return push(); }
+      return pull(true, true);
+    }
     if (!r.ok) throw new Error(r.error === 'auth' ? '비밀번호가 맞지 않아요' : (r.message || r.error));
     S.version = r.version; S.stamp = r.stamp || S.stamp; S.apiVersion = r.api || S.apiVersion;
     if (r.keys) remapKeys(r.keys, ops, snap);
@@ -1392,9 +1416,11 @@ async function connect(apiUrl, token, who) {
   const r = await api('load');
   if (!r.ok) throw new Error(r.error === 'auth' ? '비밀번호가 맞지 않아요' : (r.message || r.error || '연결 실패'));
   const prev = loadSheetCfg().synced;
-  setGuests(r.guests || []);   // diffOps 가 하객 목록을 쓰므로 먼저
+  setGuests(r.guests || []);
   S.apiVersion = r.api || 1;
-  const pending = prev ? diffOps(state, prev) : { assign: [], tables: [] };
+  // 2026-10-07 사고: 예전에는 연결할 때 "이 브라우저에서 못 적은 것" 을 계산해 시트에 다시 적었는데, 브라우저에 남은 배치가
+  // 시트와 어긋나 있으면(연결 전 "처음 배치로", 같은 편집기 창 두 개 등) 하객을 모두 뺀 것으로 보고 배정 테이블을 통째로 비웠다.
+  // 이제 연결할 때는 하객 배정, 이름, 테이블 메모와 정원 모두 시트를 그대로 따르고, 테이블 위치만 고른다.
   const localMoved = prev ? hash(JSON.stringify(layoutOf(state))) !== prev.layoutHash : JSON.stringify(state) !== JSON.stringify(defaultState());
   const remoteMoved = prev ? r.version !== prev.version : !!r.layout;
   let base = r.layout || state;
@@ -1408,7 +1434,6 @@ async function connect(apiUrl, token, who) {
   }
   S.on = true;
   applyRemote(r, base);
-  reapply(pending);
   saveSheetCfg();
   renderAll();
   setSync('ok', '시트 연결됨');
