@@ -101,6 +101,8 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 410px;gap:16px;padding:16p
 .pill i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--gold)}
 .pill.groom i{background:var(--groom)} .pill.bride i{background:var(--bride)}
 .pill em{font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.pill input{border:0;padding:0;background:transparent;flex:1;min-width:0;box-shadow:none !important}
+.pill:focus-within{border-color:var(--gold);box-shadow:0 0 0 3px rgba(169,132,73,.15)}
 .pill button{border:0;padding:0 4px;color:var(--mute);background:transparent;font-size:15px;line-height:1}
 .pill button:hover{color:var(--danger)}
 details.box{border:1px solid var(--hair);border-radius:10px;background:#fff;padding:0 12px;margin-bottom:10px}
@@ -411,12 +413,13 @@ function ask(title, text, buttons) {
 
 /* ---------- 시트 하객 ---------- */
 const S = { on: false, api: '', token: '', who: '', guests: [], byKey: new Map(), sheetTables: new Map(),
-  version: 0, stamp: '', synced: null, busy: false, again: false, err: '', tab: '', pick: null };
+  version: 0, stamp: '', synced: null, busy: false, again: false, err: '', tab: '', pick: null, apiVersion: 1, clientId: '', oldApiWarned: false };
+const COMP_SPLIT = /\s*(?:&|,|\/|\+|및|와|과|그리고)\s*/;
 const isOff = g => /^(x|X|×|불참|미참석)$/.test(g.attend.trim()) || /불참/.test(g.attend);
 const sideCls = s => /신랑/.test(s || '') ? 'groom' : /신부/.test(s || '') ? 'bride' : '';
 // 한 줄 하객이 차지하는 자리 이름: 본인, 동반인(불참 제외), 나머지는 "일행"
 function guestLabels(g) {
-  const comps = g.comp ? g.comp.split(/\s*(?:&|,|\/|\+|및|와|과|그리고)\s*/).map(s => s.trim()).filter(s => s && !/불참/.test(s)) : [];
+  const comps = g.comp ? g.comp.split(COMP_SPLIT).map(s => s.trim()).filter(s => s && !/불참/.test(s)) : [];
   const out = [g.name];
   for (const c of comps) if (out.length < g.count) out.push(c);
   while (out.length < g.count) out.push(`${g.name} 일행`);
@@ -465,7 +468,7 @@ async function assignGuest(g, t) {
   const from = [...new Set(mine.filter(p => p.t !== t).map(p => p.t.no))];
   mine.forEach(({ t: pt, i }) => { pt.names[i] = ''; pt.gids[i] = ''; });
   state.tables.forEach(x => { if (x !== t) trimSeats(x); });
-  const pick = chooseSeats(t, n, free);
+  const pick = chooseSeats(t, n, free).sort((a, b) => a - b);   // 첫 자리(번호가 가장 작은 자리)가 본인
   g.labels.forEach((lb, k) => { t.names[pick[k]] = lb; t.gids[pick[k]] = g.key; });
   trimSeats(t);
   commit(); renderAll();
@@ -478,6 +481,52 @@ function unseatGuest(g) {
   mine.forEach(({ t, i }) => { t.names[i] = ''; t.gids[i] = ''; });
   state.tables.forEach(trimSeats);
   commit(); renderAll(); toast(`${g.name} 님을 ${no}번 테이블에서 뺐어요 (되돌리기로 살릴 수 있어요)`);
+}
+
+// 하객 자리를 번호 순서로 (첫 자리 = 본인, 나머지 = 동반인)
+function guestSeats(s, key) {
+  const out = [];
+  s.tables.forEach(t => t.gids.forEach((k, i) => { if (k === key) out.push({ t, i }); }));
+  return out.sort((a, b) => a.t === b.t ? a.i - b.i : a.t.no - b.t.no);
+}
+function relabel(g) { guestSeats(state, g.key).forEach(({ t, i }, k) => { if (g.labels[k]) t.names[i] = g.labels[k]; }); }
+// 동반인 칸에 적을 글: 고친 이름들 ("OO 일행" 은 빼고) + 원래 칸의 "(불참)" 표시
+function compText(g, want) {
+  const keep = want.filter(x => x && !/ 일행$/.test(x));
+  const absent = g.comp ? g.comp.split(COMP_SPLIT).map(x => x.trim()).filter(x => /불참/.test(x)) : [];
+  return [...keep, ...absent].join(' & ');
+}
+// 테이블에 앉은 시트 하객들의 측 (새 하객 줄의 "구분" 으로 쓴다)
+function tableSide(s, t) {
+  const n = {};
+  t.gids.forEach(k => { const g = k && S.byKey.get(k); if (g && g.side) n[g.side] = (n[g.side] || 0) + 1; });
+  return Object.entries(n).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+}
+// 빈자리에 적은 이름이 자리 없는 시트 하객과 같으면 그 하객과 잇는다 (일행은 같은 테이블 빈자리에)
+function linkByName(t, i, name) {
+  if (!S.on || !name) return null;
+  const g = S.guests.find(x => !x.off && x.name === name && !seatsOf(x.key).length);
+  if (!g) return null;
+  t.gids[i] = g.key; t.names[i] = g.labels[0];
+  const free = [];
+  t.names.forEach((n, j) => { if (j !== i && !n.trim()) free.push(j); });
+  free.sort((a, b) => ((a - i + t.names.length) % t.names.length) - ((b - i + t.names.length) % t.names.length));
+  for (let k = 1; k < g.count; k++) {
+    let j = free.shift();
+    if (j === undefined) { j = t.names.length; t.names.push(''); t.gids.push(''); }
+    t.names[j] = g.labels[k]; t.gids[j] = g.key;
+  }
+  return g;
+}
+function linkManual() {
+  let n = 0;
+  for (const t of state.tables) t.names.forEach((nm, i) => { if (nm.trim() && !t.gids[i] && linkByName(t, i, nm.trim())) n++; });
+  return n;
+}
+function warnOldApi() {
+  if (!S.on || S.apiVersion >= 2 || S.oldApiWarned) return;
+  S.oldApiWarned = true;
+  toast('시트 연결 코드가 예전 판이라 이름은 시트에 적히지 않아요. seating-sheet.gs 를 새 버전으로 배포해 주세요', 6000);
 }
 
 /* ---------- SVG ---------- */
@@ -759,11 +808,11 @@ function renderTableTab() {
     <ol class="seats">${t.names.map((n, i) => {
       const gu = guestOfSeat(t, i), cls = (i >= t.cap ? 'over ' : '') + (!gu && counts.get(n.trim()) > 1 ? 'dup' : '');
       return gu
-        ? `<li class="${cls}"><span>${i + 1}</span><div class="pill ${sideCls(gu.side)}" title="${esc(`${gu.side} ${gu.rel} ${gu.name}${gu.count > 1 ? ` 일행 ${gu.count}명` : ''}`)}"><i></i><em>${esc(n)}</em><button data-unseat="${esc(gu.key)}" aria-label="${esc(gu.name)} 님 빼기">×</button></div></li>`
+        ? `<li class="${cls}"><span>${i + 1}</span><div class="pill ${sideCls(gu.side)}" title="${esc(`${gu.side} ${gu.rel} ${gu.name}${gu.count > 1 ? ` 일행 ${gu.count}명` : ''}`)}"><i></i><input type="text" data-i="${i}" data-linked="1" data-prev="${esc(n)}" value="${esc(n)}" maxlength="60" aria-label="${i + 1}번 자리 이름 (시트 하객)"><button data-unseat="${esc(gu.key)}" aria-label="${esc(gu.name)} 님 빼기">×</button></div></li>`
         : `<li class="${cls}"><span>${i + 1}</span><input type="text" data-i="${i}" value="${esc(n)}" placeholder="이름" maxlength="30" aria-label="${i + 1}번 자리 이름"></li>`;
     }).join('')}</ol>
     <p class="note warn" id="tDupNote" ${t.names.some((n, i) => !t.gids[i] && counts.get(n.trim()) > 1) ? '' : 'hidden'}>노란 칸은 다른 자리에도 같은 이름이 있어요. 동명이인이 아니면 한쪽을 지워 주세요.</p>
-    ${S.on ? '<p class="note">색 점이 있는 자리는 시트 하객이에요. 이름은 시트에서 고치고, × 로 빼면 시트의 배정 테이블도 비워져요. 빈칸에 직접 적은 이름은 이 편집기에만 남아요.</p>' : ''}
+    ${S.on ? '<p class="note">색 점이 있는 자리는 시트 하객이에요. 이름을 고치면 시트에 바로 적혀요 (첫 자리는 하객 성명, 나머지는 동반인). × 로 빼면 시트의 배정 테이블이 비워져요. 빈자리에 이름을 적으면 자리 없는 같은 이름의 하객과 잇고, 없으면 시트에 새 하객 줄이 생겨요.</p>' : ''}
     <details class="box"><summary>이름 여러 명 한 번에 넣기</summary>
       <p>한 줄에 한 명(또는 쉼표로 나눠서) 붙여넣으면 이 테이블의 빈자리에 차례로 들어가요.</p>
       <textarea id="tBulk" placeholder="김명준&#10;신채흔&#10;..."></textarea>
@@ -788,8 +837,23 @@ function renderTableTab() {
   box.querySelectorAll('.seats input').forEach(inp => {
     const i = +inp.dataset.i;
     // 입력 칸은 다시 그리지 않는다 (한글 입력 중에 칸을 새로 만들면 쓰던 글자나 커서가 사라질 수 있어서)
+    const linked = !!inp.dataset.linked;
     inp.oninput = () => { t.names[i] = inp.value; seatChanged(t); persist(); };
-    inp.onchange = () => { const v = inp.value.trim(); if (v !== inp.value) inp.value = v; t.names[i] = v; seatChanged(t); commit(); };
+    inp.onchange = () => {
+      let v = inp.value.trim();
+      if (linked && !v) { v = inp.dataset.prev || ''; toast('시트 하객 자리는 비울 수 없어요. 빼려면 × 를 누르세요'); }
+      if (v !== inp.value) inp.value = v;
+      t.names[i] = v;
+      if (linked) inp.dataset.prev = v;
+      if (S.on && (linked || v)) warnOldApi();
+      if (!linked && v && S.on) {
+        const same = S.guests.find(x => x.name === v && seatsOf(x.key).length);
+        const g = linkByName(t, i, v);
+        if (g) { commit(); refreshTable(t); renderTableTab(); renderStats(); toast(`시트 하객 ${g.name} 님과 이었어요${g.count > 1 ? ` (일행 ${g.count}명)` : ''}`); return; }
+        if (same) toast(`${tableOfGuest(state, same.key)}번 테이블에 같은 이름의 하객이 있어요. 다른 사람이면 그대로 두세요 (시트에 새 하객으로 들어가요)`, 4500);
+      }
+      seatChanged(t); commit();
+    };
     inp.onkeydown = e => {
       if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;   // 한글 조합 중 Enter 는 조합을 끝내는 데 쓰인다
       e.preventDefault();
@@ -1082,7 +1146,7 @@ function renumber() {
 /* ---------- 구글 시트 연결 ---------- */
 function loadSheetCfg() { try { return JSON.parse(localStorage.getItem(SHEET_KEY) || '{}'); } catch (e) { return {}; } }
 function saveSheetCfg() {
-  try { localStorage.setItem(SHEET_KEY, JSON.stringify({ api: S.api, token: S.token, who: S.who, synced: S.synced })); } catch (e) {}
+  try { localStorage.setItem(SHEET_KEY, JSON.stringify({ api: S.api, token: S.token, who: S.who, synced: S.synced, clientId: S.clientId })); } catch (e) {}
 }
 async function api(action, body = {}) {
   const res = await fetch(S.api, { method: 'POST', body: JSON.stringify({ token: S.token, action, ...body }), redirect: 'follow' });
@@ -1107,8 +1171,22 @@ function snapshot(s) {
   return { assign, tables, layoutHash: hash(JSON.stringify(layoutOf(s))), version: S.version, stamp: S.stamp };
 }
 function diffOps(s, base) {
-  const ops = { assign: [], tables: [] };
+  const ops = { assign: [], tables: [], rename: [], comp: [], add: [] };
   if (!base) return ops;
+  if (S.apiVersion >= 2) {
+    for (const g of S.guests) {
+      const seats = guestSeats(s, g.key);
+      if (!seats.length) continue;
+      const names = seats.map(({ t, i }) => t.names[i].trim());
+      if (names[0] && names[0] !== g.name) ops.rename.push({ key: g.key, name: names[0] });
+      const want = names.slice(1), have = g.labels.slice(1, names.length);
+      if (want.join('\n') !== have.join('\n')) ops.comp.push({ key: g.key, comp: compText(g, want), labels: names });
+    }
+    for (const t of s.tables) t.names.forEach((n, i) => {
+      const nm = n.trim();
+      if (nm && !t.gids[i]) ops.add.push({ tmp: `${S.clientId}:${t.id}:${i}:${nm}`, name: nm, side: tableSide(s, t), table: t.no, tid: t.id, i });
+    });
+  }
   for (const g of S.guests) {
     const cur = tableOfGuest(s, g.key), was = g.key in base.assign ? base.assign[g.key] : g.table;
     if (cur !== was) ops.assign.push({ key: g.key, table: cur });
@@ -1125,11 +1203,42 @@ function diffOps(s, base) {
   }
   return ops;
 }
+const opCount = o => o.assign.length + o.tables.length + o.rename.length + o.comp.length + o.add.length;
+// 시트가 돌려준 새 열쇠(이름을 고친 하객, 새로 넣은 하객)로 편집기 상태를 맞춘다
+function remapKeys(keys, ops, snap) {
+  let touched = false;
+  for (const op of ops.rename) {
+    const g = S.byKey.get(op.key); if (!g) continue;
+    const nk = keys[op.key];
+    g.name = op.name;
+    if (nk && nk !== op.key) {
+      state.tables.forEach(t => t.gids.forEach((k, i) => { if (k === op.key) t.gids[i] = nk; }));
+      S.byKey.delete(op.key); g.key = nk; S.byKey.set(nk, g);
+      if (op.key in snap.assign) { snap.assign[nk] = snap.assign[op.key]; delete snap.assign[op.key]; }
+    }
+    g.labels = guestLabels(g); relabel(g); touched = true;
+  }
+  for (const op of ops.comp) {
+    const g = S.byKey.get(keys[op.key] || op.key) || S.byKey.get(op.key); if (!g) continue;
+    g.comp = op.comp; g.labels = guestLabels(g); relabel(g); touched = true;
+  }
+  for (const op of ops.add) {
+    const nk = keys[op.tmp]; if (!nk) continue;
+    const t = byId(op.tid);
+    if (t && (t.names[op.i] || '').trim() === op.name && !t.gids[op.i]) t.gids[op.i] = nk;
+    if (!S.byKey.has(nk)) {
+      const g = { key: nk, row: 0, side: op.side || '', rel: '', name: op.name, comp: '', count: 1, countBlank: false, attend: 'O', table: op.table, tableRaw: '', off: false };
+      g.labels = guestLabels(g); S.guests.push(g); S.byKey.set(nk, g);
+    }
+    snap.assign[nk] = op.table; touched = true;
+  }
+  if (touched) { committed = JSON.stringify(state); persist(); renderAll(); }
+}
 // 시트에서 받은 하객과 테이블 표로 상태를 맞춘다. base 는 테이블 위치와 자리 순서를 가져올 배치
 function applyRemote(r, base) {
   setGuests(r.guests || []);
   S.sheetTables = new Map((r.tables || []).map(t => [t.no, t]));
-  S.version = r.version || 0; S.stamp = r.stamp || ''; S.tab = r.tab || '';
+  S.version = r.version || 0; S.stamp = r.stamp || ''; S.tab = r.tab || ''; S.apiVersion = r.api || 1;
   const s = normalize(clone(validState(base) ? base : defaultState()));
   state = s;
   for (const st of r.tables || []) {
@@ -1188,7 +1297,7 @@ async function pull(manual, preferRemote) {
     renderAll();
     setSync('ok', '시트 연결됨');
     if (manual) toast(`시트에서 불러왔어요 (하객 ${S.guests.length}줄, 테이블 ${S.sheetTables.size}개)`);
-    if (pending.assign.length || pending.tables.length || (layoutPending && !preferRemote)) schedulePush(true);
+    if (opCount(pending) || (layoutPending && !preferRemote)) schedulePush(true);
   } catch (e) {
     setSync('err', '시트 연결 오류'); toast('시트를 불러오지 못했어요: ' + e.message, 4200);
   }
@@ -1200,6 +1309,8 @@ function reapply(ops) {
     if ('memo' in op) t.group = op.memo;
     if ('cap' in op) { t.cap = op.cap; while (t.names.length < t.cap) { t.names.push(''); t.gids.push(''); } }
   }
+  for (const op of ops.rename || []) { const seats = guestSeats(state, op.key); if (seats.length) seats[0].t.names[seats[0].i] = op.name; }
+  for (const op of ops.comp || []) guestSeats(state, op.key).forEach(({ t, i }, k) => { if (op.labels[k]) t.names[i] = op.labels[k]; });
   for (const op of ops.assign || []) {
     const g = S.byKey.get(op.key); if (!g) continue;
     const mine = seatsOf(g.key); mine.forEach(({ t, i }) => { t.names[i] = ''; t.gids[i] = ''; });
@@ -1207,7 +1318,7 @@ function reapply(ops) {
     if (t) {
       const free = new Set(); t.names.forEach((n, i) => { if (!n.trim()) free.add(i); });
       while (free.size < g.count) { free.add(t.names.length); t.names.push(''); t.gids.push(''); }
-      chooseSeats(t, g.count, free).forEach((i, k) => { t.names[i] = g.labels[k]; t.gids[i] = g.key; });
+      chooseSeats(t, g.count, free).sort((a, b) => a - b).forEach((i, k) => { t.names[i] = g.labels[k]; t.gids[i] = g.key; });
     }
   }
   state.tables.forEach(trimSeats);
@@ -1223,15 +1334,19 @@ function schedulePush(now) {
 async function push(force) {
   if (!S.on) return;
   if (S.busy) { S.again = true; return; }
+  if (S.apiVersion >= 2 && linkManual()) { committed = JSON.stringify(state); persist(); renderAll(); }
   const ops = diffOps(state, S.synced), layout = layoutOf(state), lh = hash(JSON.stringify(layout));
   const sendLayout = !S.synced || lh !== S.synced.layoutHash || force;
-  if (!ops.assign.length && !ops.tables.length && !sendLayout) { setSync('ok', '시트 저장됨'); return; }
+  if (!opCount(ops) && !sendLayout) { setSync('ok', '시트 저장됨'); return; }
+  const send = { assign: ops.assign, tables: ops.tables, rename: ops.rename,
+    comp: ops.comp.map(({ key, comp }) => ({ key, comp })), add: ops.add.map(({ tmp, name, side, table }) => ({ tmp, name, side, table })) };
   S.busy = true;
   const snap = snapshot(state);
   try {
-    const r = await api('sync', { ops, layout: sendLayout ? layout : undefined, baseVersion: S.version, by: S.who, force: !!force });
+    const r = await api('sync', { ops: send, layout: sendLayout ? layout : undefined, baseVersion: S.version, by: S.who, force: !!force });
     if (!r.ok) throw new Error(r.error === 'auth' ? '비밀번호가 맞지 않아요' : (r.message || r.error));
-    S.version = r.version; S.stamp = r.stamp || S.stamp;
+    S.version = r.version; S.stamp = r.stamp || S.stamp; S.apiVersion = r.api || S.apiVersion;
+    if (r.keys) remapKeys(r.keys, ops, snap);
     if (r.layoutConflict) {
       // 하객 배정과 테이블 정보는 적었고, 테이블 위치만 다른 사람 것과 부딪힌 경우
       snap.layoutHash = S.synced ? S.synced.layoutHash : '';
@@ -1244,6 +1359,7 @@ async function push(force) {
     }
     snap.version = r.version; snap.stamp = r.stamp || ''; S.synced = snap; saveSheetCfg();
     const warn = [];
+    if (r.added) toast(`시트에 새 하객 ${r.added}명을 넣었어요`);
     if (r.missing && r.missing.length) warn.push(`시트에서 찾지 못한 하객 ${r.missing.length}건 (이름이나 구분이 바뀌었을 수 있어요)`);
     if (r.blocked && r.blocked.length) warn.push(`수식이 있어 못 적은 칸 ${r.blocked.length}건`);
     setSync('ok', `시트 저장됨 ${new Date().toTimeString().slice(0, 5)}`);
@@ -1261,20 +1377,23 @@ setInterval(async () => {
   if (!S.on || S.busy || drag || document.hidden || S.pick) return;
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
   const p = diffOps(state, S.synced);
-  if (p.assign.length || p.tables.length || (S.synced && hash(JSON.stringify(layoutOf(state))) !== S.synced.layoutHash)) return;
+  if (opCount(p) || (S.synced && hash(JSON.stringify(layoutOf(state))) !== S.synced.layoutHash)) return;
   try {
     const r = await api('version');
+    if (r.ok) S.apiVersion = r.api || S.apiVersion;
     if (r.ok && (r.version !== S.version || (r.stamp && r.stamp !== S.stamp))) { await pull(); toast('시트에서 바뀐 내용을 불러왔어요'); }
   } catch (e) {}
 }, 30000);
 
 async function connect(apiUrl, token, who) {
   S.api = apiUrl.trim(); S.token = token.trim(); S.who = (who || '').trim();
+  S.clientId = loadSheetCfg().clientId || Math.random().toString(36).slice(2, 10);
   setSync('busy', '시트 연결 중');
   const r = await api('load');
   if (!r.ok) throw new Error(r.error === 'auth' ? '비밀번호가 맞지 않아요' : (r.message || r.error || '연결 실패'));
   const prev = loadSheetCfg().synced;
   setGuests(r.guests || []);   // diffOps 가 하객 목록을 쓰므로 먼저
+  S.apiVersion = r.api || 1;
   const pending = prev ? diffOps(state, prev) : { assign: [], tables: [] };
   const localMoved = prev ? hash(JSON.stringify(layoutOf(state))) !== prev.layoutHash : JSON.stringify(state) !== JSON.stringify(defaultState());
   const remoteMoved = prev ? r.version !== prev.version : !!r.layout;
@@ -1326,7 +1445,7 @@ $('#sGo').onclick = async () => {
 $('#sOff').onclick = () => {
   if (!confirm('시트 연결을 끊을까요? 이 브라우저에 저장된 비밀번호도 지워요. 지금 배치는 이 브라우저에 남아요.')) return;
   S.on = false; S.token = ''; S.synced = null; S.guests = []; S.byKey = new Map(); S.sheetTables = new Map(); setPick(null);
-  try { localStorage.setItem(SHEET_KEY, JSON.stringify({ api: S.api, who: S.who })); } catch (e) {}
+  try { localStorage.setItem(SHEET_KEY, JSON.stringify({ api: S.api, who: S.who, clientId: S.clientId })); } catch (e) {}
   setSync('', '구글 시트 연결'); $('#sheetDlg').close(); renderAll(); toast('시트 연결을 끊었어요');
 };
 
