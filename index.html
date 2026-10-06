@@ -307,7 +307,10 @@ const HIGH = [[67, 344], [99, 344], [222, 344], [254, 344]];
 const DOORS = [[113, 364, 144, 387], [189, 364, 220, 387]];
 const SIDE_DOOR = [315, 87, 333, 141], RED = [315, 204, 333, 263], YELLOW = [221, 364, 243, 387];
 const BAR_H = [52, 366, 112, 377], BAR_V = [288, 306, 299, 365];
-const BLOCKS = [STAGE, RUNWAY, SIDE_DOOR, RED, YELLOW, BAR_H, BAR_V, ...DOORS];
+// 2026-10-06 사용자 요청 "좌석 빼고 전부 다 지워": 무대, 버진로드, 입구, 색 칸, 하이테이블, 꽃, 방 테두리를 그리지 않는다.
+// 다시 보이게 하려면 true 로 (포스터 seating-chart.html 은 그대로 다 그린다)
+const SHOW_ROOM = false;
+const BLOCKS = SHOW_ROOM ? [STAGE, RUNWAY, SIDE_DOOR, RED, YELLOW, BAR_H, BAR_V, ...DOORS] : [];
 
 /* ---------- 상태 ---------- */
 let state, selected = null, query = '', listSort = 'table', listBlank = false, tab = 'table';
@@ -516,6 +519,7 @@ function block(parent, r, label, color, o = {}) {
 }
 function drawRoom() {
   map.innerHTML = '';
+  if (!SHOW_ROOM) { el('g', { id: 'tables' }, map); return; }
   const g = el('g', { id: 'room', 'pointer-events': 'none' }, map);
   el('rect', { x: ROOM[0], y: ROOM[1], width: ROOM[2] - ROOM[0], height: ROOM[3] - ROOM[1], rx: 2, fill: '#FFFCF6', stroke: C.wall, 'stroke-width': 0.55 }, g);
   el('rect', { x: STAGE[0], y: STAGE[1], width: STAGE[2] - STAGE[0], height: STAGE[3] - STAGE[1], rx: 1, fill: C.stage }, g);
@@ -1031,7 +1035,7 @@ function renderAll() { renderTables(); renderPanel(); }
 function freeSpot(near = [165, 318]) {
   const hitsBlock = (x, y) => BLOCKS.some(([x0, y0, x1, y1]) => x + REACH > x0 && x - REACH < x1 && y + REACH > y0 && y - REACH < y1);
   const hitsTable = (x, y) => state.tables.some(t => Math.hypot(t.x - x, t.y - y) < REACH * 2 + 1);
-  const hitsHigh = (x, y) => HIGH.some(([hx, hy]) => Math.hypot(hx - x, hy - y) < REACH + 8);
+  const hitsHigh = (x, y) => SHOW_ROOM && HIGH.some(([hx, hy]) => Math.hypot(hx - x, hy - y) < REACH + 8);
   const cands = [];
   for (let y = ROOM[1] + REACH; y <= ROOM[3] - REACH; y += 4)
     for (let x = ROOM[0] + REACH; x <= ROOM[2] - REACH; x += 4)
