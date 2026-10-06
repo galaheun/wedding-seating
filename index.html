@@ -307,10 +307,11 @@ const HIGH = [[67, 344], [99, 344], [222, 344], [254, 344]];
 const DOORS = [[113, 364, 144, 387], [189, 364, 220, 387]];
 const SIDE_DOOR = [315, 87, 333, 141], RED = [315, 204, 333, 263], YELLOW = [221, 364, 243, 387];
 const BAR_H = [52, 366, 112, 377], BAR_V = [288, 306, 299, 365];
-// 2026-10-06 사용자 요청 "좌석 빼고 전부 다 지워": 무대, 버진로드, 입구, 색 칸, 하이테이블, 꽃, 방 테두리를 그리지 않는다.
-// 다시 보이게 하려면 true 로 (포스터 seating-chart.html 은 그대로 다 그린다)
-const SHOW_ROOM = false;
-const BLOCKS = SHOW_ROOM ? [STAGE, RUNWAY, SIDE_DOOR, RED, YELLOW, BAR_H, BAR_V, ...DOORS] : [];
+// 편집기에 그릴 것 (2026-10-06 사용자 요청: 좌석과 무대, 버진로드만. 포스터 seating-chart.html 은 그대로 다 그린다)
+// 다시 보이게 하려면 해당 항목을 true 로
+const SHOW = { stage: true, runway: true, room: false, flowers: false, high: false, bars: false, doors: false };
+const BLOCKS = [...(SHOW.stage ? [STAGE] : []), ...(SHOW.runway ? [RUNWAY] : []),
+  ...(SHOW.bars ? [BAR_H, BAR_V] : []), ...(SHOW.doors ? [SIDE_DOOR, RED, YELLOW, ...DOORS] : [])];
 
 /* ---------- 상태 ---------- */
 let state, selected = null, query = '', listSort = 'table', listBlank = false, tab = 'table';
@@ -519,12 +520,22 @@ function block(parent, r, label, color, o = {}) {
 }
 function drawRoom() {
   map.innerHTML = '';
-  if (!SHOW_ROOM) { el('g', { id: 'tables' }, map); return; }
   const g = el('g', { id: 'room', 'pointer-events': 'none' }, map);
-  el('rect', { x: ROOM[0], y: ROOM[1], width: ROOM[2] - ROOM[0], height: ROOM[3] - ROOM[1], rx: 2, fill: '#FFFCF6', stroke: C.wall, 'stroke-width': 0.55 }, g);
+  if (SHOW.room) el('rect', { x: ROOM[0], y: ROOM[1], width: ROOM[2] - ROOM[0], height: ROOM[3] - ROOM[1], rx: 2, fill: '#FFFCF6', stroke: C.wall, 'stroke-width': 0.55 }, g);
+  if (SHOW.stage) drawStage(g);
+  if (SHOW.runway) drawRunway(g);
+  if (SHOW.flowers) drawFlowers(g);
+  if (SHOW.high) drawHigh(g);
+  if (SHOW.bars) { block(g, BAR_H, LABELS.bar, C.bar); block(g, BAR_V, LABELS.bar, C.bar); }
+  if (SHOW.doors) drawDoors(g);
+  el('g', { id: 'tables' }, map);
+}
+function drawStage(g) {
   el('rect', { x: STAGE[0], y: STAGE[1], width: STAGE[2] - STAGE[0], height: STAGE[3] - STAGE[1], rx: 1, fill: C.stage }, g);
   txt(g, (STAGE[0] + STAGE[2]) / 2, (STAGE[1] + STAGE[3]) / 2 - 2.8, LABELS.stage, { size: 7.2, fill: '#F6F0E4', font: F_KR, track: 0.5 });
   txt(g, (STAGE[0] + STAGE[2]) / 2, (STAGE[1] + STAGE[3]) / 2 + 5.6, 'STAGE', { size: 3.4, fill: '#DEC08C', font: "'Hastegi','Cormorant Garamond',serif", weight: 400, track: 0.4 });
+}
+function drawRunway(g) {
   const [rx0, ry0, rx1, ry1] = RUNWAY, rcx = (rx0 + rx1) / 2;
   el('rect', { x: rx0, y: ry0, width: rx1 - rx0, height: ry1 - ry0, fill: C.runway, stroke: C.gold, 'stroke-width': 0.4 }, g);
   el('line', { x1: rcx, x2: rcx, y1: ry0 + 4, y2: ry1 - 4, stroke: C.gold, 'stroke-width': 0.25, 'stroke-dasharray': '1 1.5', opacity: 0.7 }, g);
@@ -533,6 +544,8 @@ function drawRoom() {
     el('rect', { x: rcx - 3.4, y: y - 3.4, width: 6.8, height: 6.8, fill: C.runway }, g);
     txt(g, rcx, y, c, { size: 4.6, fill: C.gold, font: F_KR });
   });
+}
+function drawFlowers(g) {
   FLOWERS.forEach(([cx, cy]) => {
     const k = 0.9;
     el('rect', { x: cx - 3.6 * k, y: cy + 1.2 * k, width: 7.2 * k, height: 4.2 * k, rx: 0.4, fill: C.hair }, g);
@@ -541,19 +554,21 @@ function drawRoom() {
     for (const [dx, dy] of [[-2.2, -2.2], [2.4, -1.8], [0, -0.4], [-0.4, -4.2]])
       el('circle', { cx: cx + dx * k, cy: cy + dy * k, r: 1.15 * k, fill: C.petal, stroke: C.petalLine, 'stroke-width': 0.2 }, g);
   });
+}
+function drawHigh(g) {
   HIGH.forEach(([cx, cy]) => {
     el('circle', { cx, cy, r: 7, fill: C.high, opacity: 0.9 }, g);
     el('circle', { cx, cy, r: 6.1, fill: 'none', stroke: '#fff', 'stroke-width': 0.25, opacity: 0.7 }, g);
   });
   if (LABELS.highTable) { txt(g, 83, 330, LABELS.highTable, { size: 3.3, fill: C.sub }); txt(g, 238, 330, LABELS.highTable, { size: 3.3, fill: C.sub }); }
-  block(g, BAR_H, LABELS.bar, C.bar); block(g, BAR_V, LABELS.bar, C.bar);
+}
+function drawDoors(g) {
   block(g, SIDE_DOOR, LABELS.sideDoor, C.door); block(g, RED, LABELS.red, C.red);
   DOORS.forEach(d => {
     el('line', { x1: d[0], x2: d[2], y1: ROOM[3], y2: ROOM[3], stroke: '#FFFCF6', 'stroke-width': 1.1 }, g);
     block(g, d, LABELS.door, C.door, { rx: 0.4, size: 4 });
   });
   block(g, YELLOW, LABELS.yellow, C.yellow, { rx: 0.4, ink: C.ink });
-  el('g', { id: 'tables' }, map);
 }
 
 /* ---------- 테이블 ---------- */
@@ -1035,7 +1050,7 @@ function renderAll() { renderTables(); renderPanel(); }
 function freeSpot(near = [165, 318]) {
   const hitsBlock = (x, y) => BLOCKS.some(([x0, y0, x1, y1]) => x + REACH > x0 && x - REACH < x1 && y + REACH > y0 && y - REACH < y1);
   const hitsTable = (x, y) => state.tables.some(t => Math.hypot(t.x - x, t.y - y) < REACH * 2 + 1);
-  const hitsHigh = (x, y) => SHOW_ROOM && HIGH.some(([hx, hy]) => Math.hypot(hx - x, hy - y) < REACH + 8);
+  const hitsHigh = (x, y) => SHOW.high && HIGH.some(([hx, hy]) => Math.hypot(hx - x, hy - y) < REACH + 8);
   const cands = [];
   for (let y = ROOM[1] + REACH; y <= ROOM[3] - REACH; y += 4)
     for (let x = ROOM[0] + REACH; x <= ROOM[2] - REACH; x += 4)
