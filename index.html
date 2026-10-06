@@ -1,0 +1,1437 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>좌석 배치 편집 - THE WEDDING GALA DINNER SHOW</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&family=Noto+Serif+KR:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<meta name="robots" content="noindex, nofollow">
+<script>window.SEATING_CONFIG = {"api": ""};</script>
+<style>
+:root{
+  --bg:#F4EFE6; --paper:#FBF7EF; --card:#FFFFFF; --ink:#2C2620; --sub:#6E6357; --mute:#9A8E7E;
+  --hair:#E3D9C8; --line:#D8CDBA; --gold:#A98449; --gold-soft:#F3EBDB; --gold-hi:#E2B85C;
+  --danger:#B65A50; --ok:#5E7F5A; --groom:#5E7189; --bride:#C0737A;
+  --ui:'Pretendard Variable','Pretendard','Apple SD Gothic Neo','Noto Sans KR',sans-serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none !important}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--ui);font-size:14px}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:7px 12px;line-height:1.2}
+button:hover{border-color:var(--gold)}
+button.primary{background:var(--ink);border-color:var(--ink);color:#fff}
+button.primary:hover{background:#000}
+button.danger{color:var(--danger)}
+button.danger:hover{border-color:var(--danger)}
+button:disabled{opacity:.4;cursor:default;border-color:var(--line)}
+input[type=text],input[type=search],input[type=number],input[type=password],input[type=url],textarea,select{
+  border:1px solid var(--line);border-radius:8px;background:#fff;padding:7px 10px;width:100%;outline:none}
+input:focus,textarea:focus,select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(169,132,73,.15)}
+input[readonly]{background:#F7F3EC;color:var(--sub)}
+
+/* 위 막대 */
+.bar{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;
+  padding:10px 16px;background:var(--paper);border-bottom:1px solid var(--hair)}
+.brand{display:flex;flex-direction:column;gap:2px;margin-right:auto}
+.brand b{font-size:16px;letter-spacing:.02em}
+.brand span{font-size:12px;color:var(--sub);white-space:pre}
+.stats{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font-size:12px;color:var(--sub);background:var(--card);border:1px solid var(--hair);border-radius:999px;padding:4px 10px;white-space:nowrap}
+.chip b{color:var(--ink);font-weight:600;margin-left:4px;font-variant-numeric:tabular-nums}
+.chip.warn b{color:var(--danger)}
+.actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#sheetBtn{display:inline-flex;align-items:center;gap:7px}
+#sheetBtn i{width:8px;height:8px;border-radius:50%;background:#C9BEAD;flex:none}
+#sheetBtn.on i{background:var(--ok)}
+#sheetBtn.busy i{background:var(--gold-hi)}
+#sheetBtn.err i{background:var(--danger)}
+.menu{position:relative}
+.menu summary{list-style:none;cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:7px 12px}
+.menu summary::-webkit-details-marker{display:none}
+.menu[open] summary{border-color:var(--gold)}
+.menu-list{position:absolute;right:0;top:calc(100% + 6px);min-width:250px;background:#fff;border:1px solid var(--hair);
+  border-radius:10px;box-shadow:0 10px 30px rgba(44,38,32,.14);padding:6px;display:flex;flex-direction:column;z-index:30}
+.menu-list button{border:0;text-align:left;border-radius:6px;padding:9px 10px}
+.menu-list button:hover{background:var(--gold-soft)}
+.menu-list hr{border:0;border-top:1px solid var(--hair);margin:4px 2px}
+
+/* 본문 */
+main{display:grid;grid-template-columns:minmax(0,1fr) 410px;gap:16px;padding:16px;align-items:start}
+.map-wrap{background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:12px;min-width:0;position:relative}
+.map-tools{display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.map-tools input{max-width:320px}
+.map-tools span{font-size:12px;color:var(--sub)}
+.pickbar{display:flex;align-items:center;gap:10px;background:var(--ink);color:#fff;border-radius:10px;padding:8px 12px;margin-bottom:8px;font-size:13px}
+.pickbar button{margin-left:auto;padding:5px 10px;background:transparent;color:#fff;border-color:rgba(255,255,255,.4)}
+#map{display:block;width:100%;height:calc(100vh - 170px);min-height:420px;touch-action:none;user-select:none;-webkit-user-select:none}
+.hint{margin:8px 2px 0;font-size:12px;color:var(--sub);line-height:1.6}
+.legend{display:inline-flex;gap:10px;margin-left:6px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+.panel{background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:14px;position:sticky;top:76px;
+  max-height:calc(100vh - 92px);overflow:auto}
+.tabs{display:flex;gap:4px;background:var(--gold-soft);border-radius:10px;padding:3px;margin-bottom:14px}
+.tabs button{flex:1;border:0;background:transparent;border-radius:8px;padding:8px}
+.tabs button.on{background:#fff;box-shadow:0 1px 3px rgba(44,38,32,.12);font-weight:600}
+.empty{color:var(--sub);line-height:1.7;padding:24px 4px;text-align:center}
+.empty b{display:block;color:var(--ink);font-size:15px;margin-bottom:6px}
+
+/* 테이블 칸 */
+.t-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.t-nav h2{margin:0;font-size:18px}
+.t-nav h2 small{font-size:12px;color:var(--sub);font-weight:400;margin-left:6px}
+.t-nav div{display:flex;gap:4px}
+.t-nav button{padding:5px 9px}
+.t-head{display:grid;grid-template-columns:90px 1fr;gap:8px;margin-bottom:10px}
+.t-head label,.lbl{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--sub)}
+.seat-pic{display:block;width:100%;max-width:300px;margin:4px auto 6px}
+.seat-pic .seat{cursor:pointer}
+.seat-count{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px;font-size:13px;color:var(--sub)}
+.seat-count b{color:var(--ink);font-size:15px;min-width:22px;text-align:center}
+.seat-count button{width:32px;height:32px;padding:0;border-radius:50%}
+.seats{list-style:none;margin:0 0 12px;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:6px 8px}
+.seats li{display:flex;align-items:center;gap:6px;min-width:0}
+.seats li > span{width:20px;flex:none;text-align:right;font-size:12px;color:var(--mute);font-variant-numeric:tabular-nums}
+.seats li.over > span{color:var(--danger)}
+.seats li.dup input{border-color:#E0B860;background:#FFFBF0}
+.pill{flex:1;min-width:0;display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:6px 6px 6px 9px}
+.pill i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--gold)}
+.pill.groom i{background:var(--groom)} .pill.bride i{background:var(--bride)}
+.pill em{font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.pill button{border:0;padding:0 4px;color:var(--mute);background:transparent;font-size:15px;line-height:1}
+.pill button:hover{color:var(--danger)}
+details.box{border:1px solid var(--hair);border-radius:10px;background:#fff;padding:0 12px;margin-bottom:10px}
+details.box summary{cursor:pointer;padding:10px 0;font-size:13px}
+details.box[open]{padding-bottom:12px}
+details.box p{margin:0 0 8px;font-size:12px;color:var(--sub);line-height:1.6}
+details.box textarea{min-height:90px;resize:vertical;margin-bottom:8px}
+.t-foot{display:flex;gap:6px;justify-content:space-between;flex-wrap:wrap;margin-top:6px}
+
+/* 명단과 하객 칸 */
+.l-head{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.l-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.l-row select{width:auto}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;align-self:flex-start}
+.seg button{border:0;border-radius:0;padding:6px 11px;background:#fff}
+.seg button.on{background:var(--ink);color:#fff}
+.l-export{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+.l-opt{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--sub);margin-bottom:10px}
+.glist{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid var(--hair);border-radius:10px;overflow:hidden}
+.glist th{position:sticky;top:-14px;background:var(--gold-soft);font-weight:600;font-size:12px;color:var(--sub);text-align:left;padding:7px 8px}
+.glist td{padding:7px 8px;border-top:1px solid var(--hair)}
+.glist tr[data-id]{cursor:pointer}
+.glist tr[data-id]:hover td{background:#FFFBF2}
+.glist td.n{font-variant-numeric:tabular-nums;color:var(--sub);white-space:nowrap}
+.glist td.g{color:var(--sub);font-size:12px}
+.guests{list-style:none;margin:0;padding:0;background:#fff;border:1px solid var(--hair);border-radius:10px;overflow:hidden;user-select:none;-webkit-user-select:none}
+body.dragging-guest{user-select:none;-webkit-user-select:none;cursor:grabbing}
+.guests li.gh{background:var(--gold-soft);font-size:12px;color:var(--sub);font-weight:600;padding:6px 10px;cursor:default}
+.guests li.g{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:8px 10px;border-top:1px solid var(--hair);cursor:grab;touch-action:pan-y}
+.guests li.g:hover{background:#FFFBF2}
+.guests li.g.sel{background:#2C2620;color:#fff}
+.guests li.g.sel .gm,.guests li.g.sel .gw{color:#E8DCC4}
+.guests li.g.off{opacity:.45}
+.guests li.g b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.guests li.g b i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:0}
+.guests .gm{grid-column:1;font-size:12px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.guests .gw{grid-row:1 / span 2;grid-column:2;align-self:center;text-align:right;font-size:12px;color:var(--sub);white-space:nowrap}
+.guests .gw b{display:block;font-size:13px;color:inherit}
+.guests .gw.none b{color:var(--danger)}
+.badge{display:inline-block;font-size:11px;border-radius:4px;padding:0 4px;margin-left:4px;background:#FFF2D6;color:#8A6420;font-weight:500}
+.note{font-size:12px;color:var(--sub);line-height:1.6;margin:10px 2px}
+.note.warn{color:#8A6420;background:#FFF7E6;border-radius:8px;padding:8px 10px}
+.ghost{position:fixed;z-index:60;pointer-events:none;background:var(--ink);color:#fff;border-radius:8px;padding:6px 10px;font-size:13px;
+  box-shadow:0 8px 20px rgba(0,0,0,.25);transform:translate(12px,10px);white-space:nowrap}
+
+/* 지도 안 */
+.tbl .hit{fill:transparent}
+.tbl{cursor:grab}
+.tbl.dragging{cursor:grabbing}
+.tbl .top{fill:#FFFDF8;stroke:var(--gold);stroke-width:.55}
+.tbl .inner{fill:none;stroke:var(--gold);stroke-width:.2;opacity:.55}
+.tbl .chair{fill:#fff;stroke:var(--gold);stroke-width:.35}
+.tbl .chair.on{fill:var(--gold);stroke:var(--gold)}
+.tbl .chair.groom{fill:var(--groom);stroke:var(--groom)}
+.tbl .chair.bride{fill:var(--bride);stroke:var(--bride)}
+.tbl .chair.over{stroke:var(--danger);stroke-width:.6}
+.tbl .ring{fill:none;stroke:none}
+.tbl.sel .top{stroke:var(--ink);stroke-width:1}
+.tbl.sel .ring{stroke:var(--ink);stroke-width:.5;stroke-dasharray:1.2 1.2}
+.tbl.hitq .ring{stroke:var(--gold-hi);stroke-width:2.4;opacity:.85;stroke-dasharray:none}
+.tbl.drop .ring,.picking .tbl:hover .ring{stroke:var(--ok);stroke-width:2.4;opacity:.9;stroke-dasharray:none}
+.picking .tbl{cursor:copy}
+.tbl.dim{opacity:.28}
+.tbl.overlap .top{stroke:var(--danger);stroke-dasharray:1.4 1}
+.tbl.full .top{fill:#F7F1E6}
+.tbl text{pointer-events:none}
+
+dialog{border:0;border-radius:14px;padding:20px;max-width:440px;width:calc(100vw - 32px);box-shadow:0 20px 60px rgba(0,0,0,.25)}
+dialog::backdrop{background:rgba(44,38,32,.35)}
+dialog h3{margin:0 0 6px;font-size:17px}
+dialog p{margin:0 0 12px;font-size:13px;color:var(--sub);line-height:1.6}
+dialog label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--sub);margin-bottom:10px}
+.dlg-row{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px}
+.dlg-row .grow{margin-right:auto}
+
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;
+  background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;transition:.2s;z-index:70;max-width:90vw}
+#toast.on{opacity:1;transform:translateX(-50%)}
+#printArea{display:none}
+
+@media (max-width: 960px){
+  main{grid-template-columns:1fr}
+  .panel{position:static;max-height:none}
+  #map{height:auto;min-height:0}
+}
+
+/* 인쇄 */
+@page{margin:12mm}
+@media print{
+  html,body{background:#fff}
+  body > *:not(#printArea){display:none !important}
+  #printArea{display:block;font-family:var(--ui);color:#2C2620}
+  .p-title{text-align:center;margin:0 0 6mm}
+  .p-title h1{font-family:'Noto Serif KR','Noto Serif CJK KR',serif;font-weight:500;font-size:20pt;margin:0 0 2mm;letter-spacing:.2em}
+  .p-title p{margin:0;font-size:10pt;color:#6E6357;white-space:pre-wrap}
+  .p-map svg{width:100%;height:calc(100vh - 40mm);display:block}
+  .p-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:4mm}
+  .p-card{border:0.3mm solid #D8CDBA;border-radius:2mm;padding:3mm 4mm;break-inside:avoid}
+  .p-card h3{margin:0 0 1.5mm;font-size:12pt;display:flex;gap:2mm;align-items:baseline}
+  .p-card h3 b{font-family:'Cormorant Garamond','Noto Serif CJK KR',serif;font-size:17pt;font-variant-numeric:lining-nums}
+  .p-card h3 span{font-size:9pt;color:#6E6357;font-weight:500}
+  .p-card ol{margin:0;padding-left:5mm;font-size:10pt;line-height:1.55}
+  .p-card ol li.blank{color:#C9BEAD}
+  .p-names{columns:4;column-gap:6mm;font-size:10pt}
+  .p-names h4{margin:3mm 0 1mm;font-size:11pt;color:#A98449;break-after:avoid}
+  .p-names div{display:flex;justify-content:space-between;gap:2mm;padding:0.6mm 0;border-bottom:0.2mm dotted #D8CDBA;break-inside:avoid}
+  .p-names div b{font-weight:500}
+  .p-names div span{font-variant-numeric:tabular-nums;color:#6E6357;white-space:nowrap}
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><b>좌석 배치 편집</b><span>THE WEDDING GALA DINNER SHOW   명준 &amp; 채흔   2026. 10. 17.</span></div>
+  <div class="stats" id="stats"></div>
+  <div class="actions">
+    <button id="sheetBtn" title="구글 시트 연결"><i></i><span>구글 시트 연결</span></button>
+    <button id="addTable" class="primary">+ 테이블 추가</button>
+    <button id="undo" title="되돌리기 (⌘Z)">되돌리기</button>
+    <button id="redo" title="다시 하기 (⇧⌘Z)">다시 하기</button>
+    <details class="menu" id="menu"><summary>더 보기</summary>
+      <div class="menu-list">
+        <button data-act="renumber">번호 다시 매기기 (위에서 아래, 왼쪽에서 오른쪽)</button>
+        <hr>
+        <button data-act="print-map">배치도 인쇄</button>
+        <button data-act="print-tables">테이블별 명단 인쇄</button>
+        <button data-act="print-names">가나다순 명단 인쇄 (자리 찾기용)</button>
+        <hr>
+        <button data-act="save-file">작업 파일로 저장 (.json)</button>
+        <button data-act="load-file">작업 파일 불러오기</button>
+        <hr>
+        <button data-act="reset" class="danger">처음 배치로 되돌리기</button>
+      </div>
+    </details>
+  </div>
+</header>
+
+<main>
+  <section class="map-wrap">
+    <div class="map-tools">
+      <input id="search" type="search" placeholder="이름, 그룹, 테이블 번호 찾기" autocomplete="off">
+      <span id="searchInfo"></span>
+    </div>
+    <div class="pickbar" id="pickbar" hidden><span id="pickText"></span><button id="pickCancel">취소</button></div>
+    <svg id="map" viewBox="-4 -4 351 397" aria-label="좌석 배치도"></svg>
+    <p class="hint">테이블을 끌어서 옮기고, 눌러서 이름을 넣으세요. 선택한 테이블은 방향키로 조금씩(Shift 는 크게) 옮길 수 있어요. 작업은 이 브라우저에 저절로 저장돼요.
+      <span class="legend"><span><i style="background:var(--groom)"></i>신랑측</span><span><i style="background:var(--bride)"></i>신부측</span><span><i style="background:var(--gold)"></i>직접 적은 이름</span></span></p>
+  </section>
+  <aside class="panel">
+    <div class="tabs"><button data-tab="table" class="on">테이블</button><button data-tab="guests">하객</button><button data-tab="list">전체 명단</button></div>
+    <div id="tabTable"></div>
+    <div id="tabGuests" hidden></div>
+    <div id="tabList" hidden></div>
+  </aside>
+</main>
+
+<dialog id="sheetDlg">
+  <h3>구글 시트 연결</h3>
+  <p>"하객 좌석 및 테이블 배정" 시트의 하객을 불러오고, 앉힌 테이블을 시트의 "배정 테이블" 칸에 적어요. 그룹명과 자리 수는 테이블 표의 메모와 정원으로 들어가요.</p>
+  <label>웹 앱 주소<input id="sApi" type="url" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off"></label>
+  <label>비밀번호<input id="sToken" type="password" autocomplete="off"></label>
+  <label>작업하는 사람 (누가 저장했는지 남겨요, 선택)<input id="sWho" type="text" placeholder="예: 채흔" maxlength="20"></label>
+  <p id="sMsg" class="note" hidden></p>
+  <div class="dlg-row"><button id="sOff" class="danger grow">연결 끊기</button><button id="sClose">닫기</button><button id="sGo" class="primary">연결</button></div>
+</dialog>
+<dialog id="askDlg">
+  <h3 id="askTitle"></h3>
+  <p id="askText" style="white-space:pre-line"></p>
+  <div class="dlg-row" id="askBtns"></div>
+</dialog>
+
+<div id="printArea"></div>
+<input type="file" id="fileInput" accept=".json,application/json" hidden>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+/* =====================================================================
+   좌석 배치 편집기.
+   혼자 쓸 때: 손님 이름은 이 브라우저(localStorage)에만 저장된다. 옮기려면 "작업 파일로 저장" (.json).
+   구글 시트와 쓸 때: seating-sheet.gs 웹 앱을 통해 시트의 하객을 읽고, 앉힌 테이블을 "배정 테이블" 칸에 적는다.
+     시트가 하객과 배정의 정본이다. 테이블 위치와 자리 순서, 직접 적은 이름은 시트의 숨긴 탭(좌석배치_편집기)에 둔다.
+   도면 좌표는 seating-chart.html 과 같은 스케치 좌표 (가로 343, 세로 389 단위).
+   ===================================================================== */
+const STORE_KEY = 'gala-seating-editor-v1', SHEET_KEY = 'gala-seating-sheet-v1';
+const CFG = window.SEATING_CONFIG || {};
+const DEFAULT_SEATS = 10, MAX_SEATS = 30;
+const LABELS = { stage: '무대', runway: '버진로드', door: '입구', sideDoor: '출입구', red: '', yellow: '',
+  bar: '웰컴드링크', highTable: '하이테이블' };
+
+const C = {
+  ink:'#2C2620', sub:'#6E6357', hair:'#D8CDBA', wall:'#4A4239', gold:'#A98449', stage:'#3C352C',
+  runway:'#F3ECDD', door:'#5E7189', bar:'#D3994B', yellow:'#E3BF5C', red:'#B65A50', high:'#9C8FBC',
+  leaf:'#7E9670', petal:'#F2E6E1', petalLine:'#C9A99B', groom:'#5E7189', bride:'#C0737A',
+};
+const ROOM = [2, 2, 341, 387];
+const STAGE = [69, 34, 261, 74];
+const RUNWAY = [154, 74, 176, 274];
+const T_R = 14, CHAIR_R = 16, CHAIR_SIZE = 1.45, REACH = CHAIR_R + CHAIR_SIZE;
+const ROW_Y = [109, 138.3, 167.6, 196.9, 226.2, 255.5, 284.8];
+const L3 = [40, 81, 122], L2 = [60.5, 101.5], R3 = [208, 249, 290], R2 = [228.5, 269.5];
+const ROWS = [[L2, R2], [L3, R3], [L2, [...R2, 310.5]], [L3, R3], [L2, R2], [L3, R3], [L2, R2]];
+const FLOWERS = [[141, 271], [189, 271]];
+const HIGH = [[67, 344], [99, 344], [222, 344], [254, 344]];
+const DOORS = [[113, 364, 144, 387], [189, 364, 220, 387]];
+const SIDE_DOOR = [315, 87, 333, 141], RED = [315, 204, 333, 263], YELLOW = [221, 364, 243, 387];
+const BAR_H = [52, 366, 112, 377], BAR_V = [288, 306, 299, 365];
+const BLOCKS = [STAGE, RUNWAY, SIDE_DOOR, RED, YELLOW, BAR_H, BAR_V, ...DOORS];
+
+/* ---------- 상태 ---------- */
+let state, selected = null, query = '', listSort = 'table', listBlank = false, tab = 'table';
+let gFilter = 'none', gSide = '', gQuery = '';
+let hist = [], future = [], committed = '';
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const byId = id => state.tables.find(t => t.id === id);
+const byNo = no => state.tables.find(t => t.no === no);
+const sortedTables = () => [...state.tables].sort((a, b) => a.no - b.no);
+const clone = o => JSON.parse(JSON.stringify(o));
+
+function defaultState() {
+  const tables = []; let no = 1;
+  ROWS.forEach((row, ri) => [...row[0], ...row[1]].forEach(x => {
+    tables.push({ id: 't' + no, no, x, y: ROW_Y[ri], group: '', cap: DEFAULT_SEATS, names: Array(DEFAULT_SEATS).fill(''), gids: Array(DEFAULT_SEATS).fill('') });
+    no++;
+  }));
+  return { v: 2, nextId: no, tables };
+}
+function validState(s) {
+  return s && Array.isArray(s.tables) && s.tables.every(t => t && typeof t.id === 'string' && Number.isFinite(t.no)
+    && Number.isFinite(t.x) && Number.isFinite(t.y) && Array.isArray(t.names));
+}
+// 자리 수(cap)는 정원, names 는 cap 이상 (정원을 넘겨 앉힌 사람이 있으면 그만큼 길다)
+function normalize(s) {
+  s.v = 2;
+  for (const t of s.tables) {
+    t.group = String(t.group || '');
+    t.names = t.names.map(n => String(n || ''));
+    t.cap = Math.max(1, Math.min(MAX_SEATS, parseInt(t.cap, 10) || t.names.length || DEFAULT_SEATS));
+    while (t.names.length < t.cap) t.names.push('');
+    t.gids = Array.isArray(t.gids) ? t.gids.map(g => String(g || '')) : [];
+    while (t.gids.length < t.names.length) t.gids.push('');
+    t.gids.length = t.names.length;
+  }
+  s.nextId = Math.max(s.nextId || 0, ...s.tables.map(t => parseInt(String(t.id).replace(/\D/g, ''), 10) || 0)) + 1;
+  return s;
+}
+function trimSeats(t) { while (t.names.length > t.cap && !t.names[t.names.length - 1].trim()) { t.names.pop(); t.gids.pop(); } }
+
+let storageOk = true;
+function persist() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ savedAt: new Date().toISOString(), state })); storageOk = true; }
+  catch (e) {
+    if (storageOk) toast('브라우저 저장이 막혀 있어요. 더 보기 > 작업 파일로 저장을 꼭 눌러 두세요.');
+    storageOk = false;
+  }
+}
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) { const o = JSON.parse(raw); if (validState(o.state)) return normalize(o.state); }
+  } catch (e) { storageOk = false; }
+  return defaultState();
+}
+// 바뀐 뒤에 부른다. 되돌리기 기록을 남기고 저장하고, 시트에 연결돼 있으면 바뀐 것만 적는다
+function commit() {
+  const now = JSON.stringify(state);
+  if (now === committed) return;
+  hist.push(committed); if (hist.length > 100) hist.shift();
+  future = []; committed = now; persist(); updateUndo(); schedulePush();
+}
+function undo() {
+  if (!hist.length) return;
+  future.push(committed); committed = hist.pop(); state = JSON.parse(committed);
+  if (selected && !byId(selected)) selected = null;
+  persist(); renderAll(); updateUndo(); schedulePush(); toast('되돌렸어요');
+}
+function redo() {
+  if (!future.length) return;
+  hist.push(committed); committed = future.pop(); state = JSON.parse(committed);
+  if (selected && !byId(selected)) selected = null;
+  persist(); renderAll(); updateUndo(); schedulePush(); toast('다시 했어요');
+}
+function updateUndo() { $('#undo').disabled = !hist.length; $('#redo').disabled = !future.length; }
+
+let toastTimer;
+function toast(msg, ms = 2800) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('on'), ms);
+}
+// 고르기 창. buttons: [{v, label, cls}]
+function ask(title, text, buttons) {
+  return new Promise(res => {
+    const d = $('#askDlg');
+    $('#askTitle').textContent = title; $('#askText').textContent = text;
+    const row = $('#askBtns'); row.innerHTML = '';
+    buttons.forEach(b => {
+      const el = document.createElement('button'); el.textContent = b.label; if (b.cls) el.className = b.cls;
+      el.onclick = () => { d.close(); res(b.v); }; row.appendChild(el);
+    });
+    d.onclose = () => res(null);
+    d.showModal();
+  });
+}
+
+/* ---------- 시트 하객 ---------- */
+const S = { on: false, api: '', token: '', who: '', guests: [], byKey: new Map(), sheetTables: new Map(),
+  version: 0, stamp: '', synced: null, busy: false, again: false, err: '', tab: '', pick: null };
+const isOff = g => /^(x|X|×|불참|미참석)$/.test(g.attend.trim()) || /불참/.test(g.attend);
+const sideCls = s => /신랑/.test(s || '') ? 'groom' : /신부/.test(s || '') ? 'bride' : '';
+// 한 줄 하객이 차지하는 자리 이름: 본인, 동반인(불참 제외), 나머지는 "일행"
+function guestLabels(g) {
+  const comps = g.comp ? g.comp.split(/\s*(?:&|,|\/|\+|및|와|과|그리고)\s*/).map(s => s.trim()).filter(s => s && !/불참/.test(s)) : [];
+  const out = [g.name];
+  for (const c of comps) if (out.length < g.count) out.push(c);
+  while (out.length < g.count) out.push(`${g.name} 일행`);
+  return out.slice(0, g.count);
+}
+function setGuests(list) {
+  S.guests = list.map(g => ({ ...g, labels: guestLabels(g), off: isOff(g) }));
+  S.byKey = new Map(S.guests.map(g => [g.key, g]));
+}
+function seatsOf(key) {
+  const out = [];
+  for (const t of state.tables) t.gids.forEach((gid, i) => { if (gid === key) out.push({ t, i }); });
+  return out;
+}
+function tableOfGuest(s, key) {
+  for (const t of s.tables) if (t.gids.includes(key)) return t.no;
+  return null;
+}
+const guestOfSeat = (t, i) => t.gids[i] ? S.byKey.get(t.gids[i]) : null;
+
+// 빈자리 중 n개 고르기. 붙어 있는 자리를 먼저
+function chooseSeats(t, n, free) {
+  const len = t.names.length, isFree = i => free.has(i);
+  for (const s of [...free].sort((a, b) => a - b)) {
+    let ok = true;
+    for (let k = 0; k < n; k++) if (!isFree((s + k) % len)) { ok = false; break; }
+    if (ok) return Array.from({ length: n }, (_, k) => (s + k) % len);
+  }
+  return [...free].sort((a, b) => a - b).slice(0, n);
+}
+async function assignGuest(g, t) {
+  if (!S.on) return;
+  const n = g.count, mine = seatsOf(g.key);
+  if (mine.length === n && mine.every(p => p.t === t)) { toast(`${g.name} 님은 이미 ${t.no}번 테이블에 있어요`); return; }
+  const free = new Set();
+  t.names.forEach((nm, i) => { if (!nm.trim() || mine.some(p => p.t === t && p.i === i)) free.add(i); });
+  if (free.size < n) {
+    const need = n - free.size;
+    if (t.names.length + need > MAX_SEATS) { toast(`${t.no}번 테이블에 자리가 모자라요 (빈자리 ${free.size}개)`); return; }
+    const v = await ask('자리가 모자라요', `${t.no}번 테이블 빈자리가 ${free.size}개예요. ${g.name} 님 일행은 ${n}명이에요.`, [
+      { v: 'cap', label: `정원을 ${t.cap + need}명으로 늘리기` }, { v: 'over', label: '정원은 두고 초과로 앉히기' }, { v: null, label: '취소' }]);
+    if (!v) return;
+    for (let k = 0; k < need; k++) { free.add(t.names.length); t.names.push(''); t.gids.push(''); }
+    if (v === 'cap') t.cap = Math.min(MAX_SEATS, t.cap + need);
+  }
+  const from = [...new Set(mine.filter(p => p.t !== t).map(p => p.t.no))];
+  mine.forEach(({ t: pt, i }) => { pt.names[i] = ''; pt.gids[i] = ''; });
+  state.tables.forEach(x => { if (x !== t) trimSeats(x); });
+  const pick = chooseSeats(t, n, free);
+  g.labels.forEach((lb, k) => { t.names[pick[k]] = lb; t.gids[pick[k]] = g.key; });
+  trimSeats(t);
+  commit(); renderAll();
+  toast(`${g.name} 님${n > 1 ? ` 일행 ${n}명` : ''}을 ${t.no}번 테이블에 앉혔어요` + (from.length ? ` (${from.join(', ')}번에서 옮김)` : ''));
+}
+function unseatGuest(g) {
+  const mine = seatsOf(g.key);
+  if (!mine.length) return;
+  const no = mine[0].t.no;
+  mine.forEach(({ t, i }) => { t.names[i] = ''; t.gids[i] = ''; });
+  state.tables.forEach(trimSeats);
+  commit(); renderAll(); toast(`${g.name} 님을 ${no}번 테이블에서 뺐어요 (되돌리기로 살릴 수 있어요)`);
+}
+
+/* ---------- SVG ---------- */
+const NS = 'http://www.w3.org/2000/svg';
+const map = $('#map');
+function el(tag, attrs, parent) {
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) if (attrs[k] !== undefined && attrs[k] !== null) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+// 파일을 더블클릭해 열면 크롬이 웹 글꼴을 막을 수 있어 이 맥에 설치된 글꼴(Noto Serif CJK KR, Pretendard)을 뒤에 둔다
+const F_KR = "'Noto Serif KR', 'Noto Serif CJK KR', 'AppleMyungjo', serif";
+const F_NUM = "'Cormorant Garamond', 'Noto Serif KR', 'Noto Serif CJK KR', serif";
+const F_UI = "'Pretendard Variable', 'Pretendard', 'Apple SD Gothic Neo', sans-serif";
+function txt(parent, x, y, s, o = {}) {
+  const t = el('text', { x, y, 'font-size': o.size || 4, 'font-weight': o.weight || 500, fill: o.fill || C.ink,
+    'font-family': o.font || F_UI, 'text-anchor': o.anchor || 'middle',
+    'dominant-baseline': 'central', 'letter-spacing': o.track ? o.track * (o.size || 4) : undefined, class: o.cls }, parent);
+  t.textContent = s;
+  return t;
+}
+const ctx = document.createElement('canvas').getContext('2d');
+function measure(s, size, family, weight = 500) {
+  ctx.font = `${weight} 100px ${family}`;
+  return ctx.measureText(s).width / 100 * size;
+}
+function block(parent, r, label, color, o = {}) {
+  const [x0, y0, x1, y1] = r, w = x1 - x0, h = y1 - y0;
+  el('rect', { x: x0, y: y0, width: w, height: h, rx: o.rx ?? 0.8, fill: color }, parent);
+  if (!label) return;
+  if (h > w * 1.6) {
+    const ch = [...label], size = Math.min(3.6, w * 0.42), step = size * 1.22;
+    ch.forEach((c, i) => txt(parent, x0 + w / 2, y0 + h / 2 + (i - (ch.length - 1) / 2) * step, c, { size, fill: '#fff' }));
+  } else {
+    let size = o.size || 3.6;
+    while (size > 2 && measure(label, size, F_UI) > w - 2) size -= 0.1;
+    txt(parent, x0 + w / 2, y0 + h / 2, label, { size, fill: o.ink || '#fff' });
+  }
+}
+function drawRoom() {
+  map.innerHTML = '';
+  const g = el('g', { id: 'room', 'pointer-events': 'none' }, map);
+  el('rect', { x: ROOM[0], y: ROOM[1], width: ROOM[2] - ROOM[0], height: ROOM[3] - ROOM[1], rx: 2, fill: '#FFFCF6', stroke: C.wall, 'stroke-width': 0.55 }, g);
+  el('rect', { x: STAGE[0], y: STAGE[1], width: STAGE[2] - STAGE[0], height: STAGE[3] - STAGE[1], rx: 1, fill: C.stage }, g);
+  txt(g, (STAGE[0] + STAGE[2]) / 2, (STAGE[1] + STAGE[3]) / 2 - 2.8, LABELS.stage, { size: 7.2, fill: '#F6F0E4', font: F_KR, track: 0.5 });
+  txt(g, (STAGE[0] + STAGE[2]) / 2, (STAGE[1] + STAGE[3]) / 2 + 5.6, 'STAGE', { size: 3.4, fill: '#DEC08C', font: "'Hastegi','Cormorant Garamond',serif", weight: 400, track: 0.4 });
+  const [rx0, ry0, rx1, ry1] = RUNWAY, rcx = (rx0 + rx1) / 2;
+  el('rect', { x: rx0, y: ry0, width: rx1 - rx0, height: ry1 - ry0, fill: C.runway, stroke: C.gold, 'stroke-width': 0.4 }, g);
+  el('line', { x1: rcx, x2: rcx, y1: ry0 + 4, y2: ry1 - 4, stroke: C.gold, 'stroke-width': 0.25, 'stroke-dasharray': '1 1.5', opacity: 0.7 }, g);
+  [...LABELS.runway].forEach((c, i, a) => {
+    const y = (ry0 + ry1) / 2 + (i - (a.length - 1) / 2) * 7;
+    el('rect', { x: rcx - 3.4, y: y - 3.4, width: 6.8, height: 6.8, fill: C.runway }, g);
+    txt(g, rcx, y, c, { size: 4.6, fill: C.gold, font: F_KR });
+  });
+  FLOWERS.forEach(([cx, cy]) => {
+    const k = 0.9;
+    el('rect', { x: cx - 3.6 * k, y: cy + 1.2 * k, width: 7.2 * k, height: 4.2 * k, rx: 0.4, fill: C.hair }, g);
+    for (const [dx, dy, rr] of [[-3, -1.4, 2.3], [3, -1.4, 2.3], [0, -3.4, 2.5], [-1.6, 1, 2], [1.7, 1, 2]])
+      el('circle', { cx: cx + dx * k, cy: cy + dy * k, r: rr * k, fill: C.leaf, opacity: 0.85 }, g);
+    for (const [dx, dy] of [[-2.2, -2.2], [2.4, -1.8], [0, -0.4], [-0.4, -4.2]])
+      el('circle', { cx: cx + dx * k, cy: cy + dy * k, r: 1.15 * k, fill: C.petal, stroke: C.petalLine, 'stroke-width': 0.2 }, g);
+  });
+  HIGH.forEach(([cx, cy]) => {
+    el('circle', { cx, cy, r: 7, fill: C.high, opacity: 0.9 }, g);
+    el('circle', { cx, cy, r: 6.1, fill: 'none', stroke: '#fff', 'stroke-width': 0.25, opacity: 0.7 }, g);
+  });
+  if (LABELS.highTable) { txt(g, 83, 330, LABELS.highTable, { size: 3.3, fill: C.sub }); txt(g, 238, 330, LABELS.highTable, { size: 3.3, fill: C.sub }); }
+  block(g, BAR_H, LABELS.bar, C.bar); block(g, BAR_V, LABELS.bar, C.bar);
+  block(g, SIDE_DOOR, LABELS.sideDoor, C.door); block(g, RED, LABELS.red, C.red);
+  DOORS.forEach(d => {
+    el('line', { x1: d[0], x2: d[2], y1: ROOM[3], y2: ROOM[3], stroke: '#FFFCF6', 'stroke-width': 1.1 }, g);
+    block(g, d, LABELS.door, C.door, { rx: 0.4, size: 4 });
+  });
+  block(g, YELLOW, LABELS.yellow, C.yellow, { rx: 0.4, ink: C.ink });
+  el('g', { id: 'tables' }, map);
+}
+
+/* ---------- 테이블 ---------- */
+const filled = t => t.names.filter(n => n.trim()).length;
+function matches(t) {
+  if (!query) return false;
+  const q = query.toLowerCase();
+  return String(t.no) === q || t.group.toLowerCase().includes(q) || t.names.some(n => n.toLowerCase().includes(q))
+    || t.gids.some(k => { const g = k && S.byKey.get(k); return g && g.rel.toLowerCase().includes(q); });
+}
+function fitGroup(s) {
+  if (!s) return null;
+  const y = 5.1;
+  for (let size = 3.4; size >= 2.2; size -= 0.1) {
+    const far = y + size / 2, w = 2 * Math.sqrt(12.4 * 12.4 - far * far) - 1.6;
+    if (measure(s, size, F_KR) <= w) return { s, size, y };
+  }
+  const size = 2.2, far = y + size / 2, w = 2 * Math.sqrt(12.4 * 12.4 - far * far) - 1.6;
+  let cut = [...s];
+  while (cut.length > 1 && measure(cut.join('') + '…', size, F_KR) > w) cut.pop();
+  return { s: cut.join('') + '…', size, y };
+}
+function tableNode(t) {
+  const g = el('g', { class: 'tbl', 'data-id': t.id, transform: `translate(${t.x} ${t.y})` });
+  el('circle', { class: 'hit', r: REACH + 0.6 }, g);
+  el('circle', { class: 'ring', r: REACH + 1.6 }, g);
+  const n = t.names.length;
+  t.names.forEach((name, i) => {
+    const a = (-90 + i * 360 / n) * Math.PI / 180, gu = guestOfSeat(t, i);
+    const cls = 'chair' + (name.trim() ? (gu ? ' ' + (sideCls(gu.side) || 'on') : ' on') : '') + (i >= t.cap ? ' over' : '');
+    const c = el('circle', { class: cls, cx: CHAIR_R * Math.cos(a), cy: CHAIR_R * Math.sin(a), r: CHAIR_SIZE }, g);
+    el('title', {}, c).textContent = `${t.no}번 ${i + 1}번 자리: ${name.trim() || '(빈자리)'}${gu ? ` (${gu.side} ${gu.rel})` : ''}${i >= t.cap ? ' 정원 초과' : ''}`;
+  });
+  el('circle', { class: 'top', r: T_R }, g);
+  el('circle', { class: 'inner', r: 12.4 }, g);
+  txt(g, 0, -3.6, String(t.no), { size: 9.6, font: F_NUM, weight: 500, cls: 'no' }).style.fontVariantNumeric = 'lining-nums';
+  el('line', { x1: -2, x2: 2, y1: 1.3, y2: 1.3, stroke: C.gold, 'stroke-width': 0.25 }, g);
+  const fg = fitGroup(t.group.trim());
+  if (fg) txt(g, 0, fg.y, fg.s, { size: fg.size, font: F_KR, fill: C.wall });
+  const f = filled(t);
+  txt(g, 0, fg ? 9.5 : 6, `${f}/${t.cap}`, { size: 2.3, fill: f > t.cap ? C.red : '#9A8E7E', weight: 500 });
+  if (f >= t.cap) g.classList.add('full');
+  return g;
+}
+function overlaps() {
+  const out = new Set(), ts = state.tables;
+  for (let i = 0; i < ts.length; i++) for (let j = i + 1; j < ts.length; j++)
+    if (Math.hypot(ts[i].x - ts[j].x, ts[i].y - ts[j].y) < REACH * 2 - 0.5) { out.add(ts[i].id); out.add(ts[j].id); }
+  return out;
+}
+function renderTables() {
+  const layer = $('#tables'); if (!layer) return;
+  layer.innerHTML = '';
+  const ov = overlaps();
+  for (const t of sortedTables()) {
+    const g = tableNode(t);
+    if (t.id === selected) g.classList.add('sel');
+    if (query) g.classList.add(matches(t) ? 'hitq' : 'dim');
+    if (ov.has(t.id)) g.classList.add('overlap');
+    layer.appendChild(g);
+  }
+  const s = layer.querySelector('.sel'); if (s) layer.appendChild(s);
+  map.classList.toggle('picking', !!S.pick);
+}
+function refreshTable(t) {
+  const old = map.querySelector(`.tbl[data-id="${t.id}"]`);
+  if (!old) return renderTables();
+  const g = tableNode(t);
+  g.setAttribute('class', old.getAttribute('class').replace(/\bfull\b/, '') + (filled(t) >= t.cap ? ' full' : ''));
+  old.replaceWith(g);
+}
+function updateOverlapClasses() {
+  const ov = overlaps();
+  map.querySelectorAll('.tbl').forEach(g => g.classList.toggle('overlap', ov.has(g.dataset.id)));
+}
+
+/* ---------- 끌어서 옮기기 ---------- */
+function toSvg(e) {
+  const p = map.createSVGPoint(); p.x = e.clientX; p.y = e.clientY;
+  return p.matrixTransform(map.getScreenCTM().inverse());
+}
+const clampX = x => Math.min(ROOM[2] - REACH, Math.max(ROOM[0] + REACH, x));
+const clampY = y => Math.min(ROOM[3] - REACH, Math.max(ROOM[1] + REACH, y));
+let drag = null;
+map.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  const g = e.target.closest('.tbl');
+  if (S.pick) {
+    if (g) { const guest = S.byKey.get(S.pick); setPick(null); if (guest) assignGuest(guest, byId(g.dataset.id)); }
+    return;
+  }
+  if (!g) { if (selected) { selected = null; renderTables(); renderPanel(); } return; }
+  const t = byId(g.dataset.id), p = toSvg(e);
+  drag = { t, g, dx: p.x - t.x, dy: p.y - t.y, sx: e.clientX, sy: e.clientY, moved: false };
+  map.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+map.addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 4) return;
+  if (!drag.moved) { drag.moved = true; drag.g.classList.add('dragging'); $('#tables').appendChild(drag.g); }
+  const p = toSvg(e);
+  drag.t.x = Math.round(clampX(p.x - drag.dx) * 10) / 10;
+  drag.t.y = Math.round(clampY(p.y - drag.dy) * 10) / 10;
+  drag.g.setAttribute('transform', `translate(${drag.t.x} ${drag.t.y})`);
+  updateOverlapClasses();
+});
+function endDrag() {
+  if (!drag) return;
+  const { t, moved } = drag; drag.g.classList.remove('dragging'); drag = null;
+  if (moved) { commit(); if (selected !== t.id) select(t.id); }
+  else select(t.id);
+}
+map.addEventListener('pointerup', endDrag);
+map.addEventListener('pointercancel', endDrag);
+
+function select(id, focusSeat) {
+  selected = id; renderTables();
+  if (tab !== 'table') setTab('table'); else renderPanel();
+  if (focusSeat != null) { const inp = $(`#tabTable input[data-i="${focusSeat}"]`); if (inp) { inp.focus(); inp.select(); } }
+}
+function setPick(key) {
+  S.pick = key;
+  const g = key && S.byKey.get(key);
+  $('#pickbar').hidden = !g;
+  if (g) $('#pickText').textContent = `${g.name} 님${g.count > 1 ? ` 일행 ${g.count}명` : ''}: 앉힐 테이블을 누르세요`;
+  renderTables();
+  if (tab === 'guests') renderGuestsTab();
+}
+$('#pickCancel').onclick = () => setPick(null);
+
+/* ---------- 오른쪽 칸 ---------- */
+function setTab(name) {
+  tab = name;
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  $('#tabTable').hidden = name !== 'table'; $('#tabGuests').hidden = name !== 'guests'; $('#tabList').hidden = name !== 'list';
+  renderPanel();
+}
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+
+function nameCounts() {
+  const m = new Map();
+  for (const t of state.tables) t.names.forEach((n, i) => { const k = n.trim(); if (k && !t.gids[i]) m.set(k, (m.get(k) || 0) + 1); });
+  return m;
+}
+function seatPic(t) {
+  const n = t.names.length, R = 108, step = 2 * R * Math.sin(Math.PI / n), sr = Math.min(24, step / 2 - 2);
+  let s = `<svg class="seat-pic" viewBox="0 0 300 300" aria-hidden="true">
+    <circle cx="150" cy="150" r="60" fill="#FFFDF8" stroke="${C.gold}" stroke-width="1.6"/>
+    <circle cx="150" cy="150" r="54" fill="none" stroke="${C.gold}" stroke-width=".6" opacity=".55"/>
+    <text x="150" y="${t.group ? 140 : 150}" text-anchor="middle" dominant-baseline="central" font-family="${esc(F_NUM)}" font-weight="500" font-size="40" fill="${C.ink}" style="font-variant-numeric:lining-nums">${t.no}</text>`;
+  if (t.group) s += `<text x="150" y="176" text-anchor="middle" dominant-baseline="central" font-family="${esc(F_KR)}" font-weight="500" font-size="${Math.min(13, 90 / Math.max(1, [...t.group].length) * 1.7)}" fill="${C.wall}">${esc(t.group)}</text>`;
+  t.names.forEach((name, i) => {
+    const a = (-90 + i * 360 / n) * Math.PI / 180, x = 150 + R * Math.cos(a), y = 150 + R * Math.sin(a);
+    const nm = name.trim(), on = !!nm, gu = guestOfSeat(t, i), over = i >= t.cap;
+    const fill = !on ? '#fff' : gu ? (sideCls(gu.side) === 'groom' ? '#E4E9F0' : sideCls(gu.side) === 'bride' ? '#F6E3E5' : '#F3EBDB') : '#F3EBDB';
+    const stroke = over ? C.red : gu ? (sideCls(gu.side) === 'groom' ? C.groom : sideCls(gu.side) === 'bride' ? C.bride : C.gold) : C.gold;
+    let fs = Math.min(11, sr * 0.62);
+    while (nm && fs > 6 && measure(nm, fs, F_UI) > sr * 1.8) fs -= 0.5;
+    s += `<g class="seat" data-i="${i}"><circle cx="${x}" cy="${y}" r="${sr}" fill="${fill}" stroke="${stroke}" stroke-width="${on ? 1.2 : .8}" ${on ? '' : 'stroke-dasharray="3 2"'}/>
+      <text x="${x}" y="${y - (on ? sr * 0.42 : 0)}" text-anchor="middle" dominant-baseline="central" font-size="${on ? Math.max(7, sr * 0.36) : Math.max(8, sr * 0.5)}" fill="${over ? C.red : '#9A8E7E'}" font-family="${esc(F_UI)}">${i + 1}</text>
+      ${on ? `<text x="${x}" y="${y + sr * 0.18}" text-anchor="middle" dominant-baseline="central" font-size="${fs}" font-weight="600" fill="${C.ink}" font-family="${esc(F_UI)}">${esc(nm)}</text>` : ''}</g>`;
+  });
+  return s + '</svg>';
+}
+function renderPanel() {
+  if (tab === 'table') renderTableTab(); else if (tab === 'guests') renderGuestsTab(); else renderListTab();
+  renderStats();
+}
+function renderTableTab() {
+  const box = $('#tabTable'), t = selected && byId(selected);
+  if (!t) {
+    box.innerHTML = `<div class="empty"><b>테이블을 눌러 주세요</b>배치도에서 테이블을 누르면 여기에서 번호, 그룹명, 자리별 이름을 넣을 수 있어요.<br>끌어서 옮기거나 위의 "테이블 추가"로 새 테이블을 놓을 수 있어요.${S.on ? '<br>시트 하객은 "하객" 칸에서 테이블로 끌어다 놓으세요.' : ''}</div>`;
+    return;
+  }
+  const counts = nameCounts(), order = sortedTables(), idx = order.findIndex(x => x.id === t.id);
+  const f = filled(t), over = t.names.length > t.cap;
+  box.innerHTML = `
+    <div class="t-nav"><h2>${t.no}번 테이블<small id="tCount">${f}명 / 정원 ${t.cap}</small></h2>
+      <div><button id="tPrev" ${idx <= 0 ? 'disabled' : ''} aria-label="이전 테이블">◀</button><button id="tNext" ${idx >= order.length - 1 ? 'disabled' : ''} aria-label="다음 테이블">▶</button></div></div>
+    <div class="t-head">
+      <label>테이블 번호<input id="tNo" type="number" min="1" max="999" value="${t.no}" ${S.on ? 'readonly title="시트와 연결 중에는 시트 표에서 바꿔 주세요"' : ''}></label>
+      <label>${S.on ? '그룹명 (시트 메모)' : '그룹명'}<input id="tGroup" type="text" value="${esc(t.group)}" placeholder="예: 신랑 대학 동기" maxlength="${S.on ? 200 : 40}"></label>
+    </div>
+    <div id="tPic">${seatPic(t)}</div>
+    <div class="seat-count">${S.on ? '정원' : '자리 수'} <button id="tLess" aria-label="자리 하나 빼기">−</button><b>${t.cap}</b><button id="tMore" aria-label="자리 하나 더하기">+</button></div>
+    ${over ? `<p class="note warn">정원 ${t.cap}명보다 ${t.names.length - t.cap}명 더 앉아 있어요 (빨간 번호).</p>` : ''}
+    <ol class="seats">${t.names.map((n, i) => {
+      const gu = guestOfSeat(t, i), cls = (i >= t.cap ? 'over ' : '') + (!gu && counts.get(n.trim()) > 1 ? 'dup' : '');
+      return gu
+        ? `<li class="${cls}"><span>${i + 1}</span><div class="pill ${sideCls(gu.side)}" title="${esc(`${gu.side} ${gu.rel} ${gu.name}${gu.count > 1 ? ` 일행 ${gu.count}명` : ''}`)}"><i></i><em>${esc(n)}</em><button data-unseat="${esc(gu.key)}" aria-label="${esc(gu.name)} 님 빼기">×</button></div></li>`
+        : `<li class="${cls}"><span>${i + 1}</span><input type="text" data-i="${i}" value="${esc(n)}" placeholder="이름" maxlength="30" aria-label="${i + 1}번 자리 이름"></li>`;
+    }).join('')}</ol>
+    <p class="note warn" id="tDupNote" ${t.names.some((n, i) => !t.gids[i] && counts.get(n.trim()) > 1) ? '' : 'hidden'}>노란 칸은 다른 자리에도 같은 이름이 있어요. 동명이인이 아니면 한쪽을 지워 주세요.</p>
+    ${S.on ? '<p class="note">색 점이 있는 자리는 시트 하객이에요. 이름은 시트에서 고치고, × 로 빼면 시트의 배정 테이블도 비워져요. 빈칸에 직접 적은 이름은 이 편집기에만 남아요.</p>' : ''}
+    <details class="box"><summary>이름 여러 명 한 번에 넣기</summary>
+      <p>한 줄에 한 명(또는 쉼표로 나눠서) 붙여넣으면 이 테이블의 빈자리에 차례로 들어가요.</p>
+      <textarea id="tBulk" placeholder="김명준&#10;신채흔&#10;..."></textarea>
+      <button id="tBulkGo">빈자리에 채우기</button>
+    </details>
+    <div class="t-foot"><button id="tClear">이름 모두 지우기</button><button id="tDelete" class="danger">테이블 삭제</button></div>`;
+
+  $('#tPrev').onclick = () => select(order[idx - 1].id);
+  $('#tNext').onclick = () => select(order[idx + 1].id);
+  $('#tNo').onchange = e => {
+    if (S.on) return;
+    const v = parseInt(e.target.value, 10);
+    if (!Number.isFinite(v) || v < 1) { e.target.value = t.no; return; }
+    if (v === t.no) return;
+    const other = state.tables.find(x => x.no === v);
+    if (other) { other.no = t.no; toast(`${v}번이 이미 있어서 두 테이블 번호를 서로 바꿨어요`); }
+    t.no = v; commit(); renderTables(); renderPanel();
+  };
+  const grp = $('#tGroup');
+  grp.oninput = () => { t.group = grp.value; refreshTable(t); $('#tPic').innerHTML = seatPic(t); bindPic(t); persist(); };
+  grp.onchange = () => { t.group = grp.value.trim(); commit(); };
+  box.querySelectorAll('.seats input').forEach(inp => {
+    const i = +inp.dataset.i;
+    // 입력 칸은 다시 그리지 않는다 (한글 입력 중에 칸을 새로 만들면 쓰던 글자나 커서가 사라질 수 있어서)
+    inp.oninput = () => { t.names[i] = inp.value; seatChanged(t); persist(); };
+    inp.onchange = () => { const v = inp.value.trim(); if (v !== inp.value) inp.value = v; t.names[i] = v; seatChanged(t); commit(); };
+    inp.onkeydown = e => {
+      if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;   // 한글 조합 중 Enter 는 조합을 끝내는 데 쓰인다
+      e.preventDefault();
+      const all = [...box.querySelectorAll('.seats input')], k = all.indexOf(inp), next = all[k + 1] || all[0];
+      if (next) { next.focus(); next.select(); }
+    };
+  });
+  box.querySelectorAll('[data-unseat]').forEach(b => b.onclick = () => { const g = S.byKey.get(b.dataset.unseat); if (g) unseatGuest(g); });
+  $('#tLess').onclick = () => {
+    if (t.cap <= 1) return;
+    if (t.names.length === t.cap) {
+      const i = t.names.length - 1, last = t.names[i].trim();
+      if (t.gids[i]) { toast(`${t.cap}번 자리에 시트 하객이 앉아 있어요. 먼저 빼 주세요`); return; }
+      if (last && !confirm(`${t.cap}번 자리의 "${last}" 님이 함께 지워져요. 줄일까요?`)) return;
+      t.names.pop(); t.gids.pop();
+    }
+    t.cap--; commit(); refreshTable(t); updateOverlapClasses(); renderPanel();
+  };
+  $('#tMore').onclick = () => {
+    if (t.cap >= MAX_SEATS) return toast(`한 테이블은 ${MAX_SEATS}자리까지예요`);
+    t.cap++; while (t.names.length < t.cap) { t.names.push(''); t.gids.push(''); }
+    commit(); refreshTable(t); renderPanel();
+  };
+  $('#tBulkGo').onclick = () => {
+    const ta = $('#tBulk'), list = ta.value.split(/[\n,\t]+/).map(s => s.trim()).filter(Boolean);
+    if (!list.length) return;
+    let put = 0;
+    for (let i = 0; i < t.names.length && put < list.length; i++) if (!t.names[i].trim()) { t.names[i] = list[put++]; t.gids[i] = ''; }
+    const left = list.slice(put);
+    commit(); refreshTable(t); renderPanel();
+    if (left.length) { $('#tBulk').value = left.join('\n'); $('#tBulk').closest('details').open = true; toast(`${put}명 넣었어요. 자리가 모자라 ${left.length}명은 남겨 뒀어요`); }
+    else toast(`${put}명 넣었어요`);
+  };
+  $('#tClear').onclick = () => {
+    const sheetN = t.gids.filter(Boolean).length;
+    if (!filled(t) || !confirm(`${t.no}번 테이블의 이름 ${filled(t)}개를 모두 지울까요?` + (sheetN ? '\n시트 하객은 시트의 배정 테이블도 비워져요.' : ''))) return;
+    t.names = t.names.map(() => ''); t.gids = t.gids.map(() => ''); trimSeats(t);
+    commit(); refreshTable(t); renderPanel();
+  };
+  $('#tDelete').onclick = () => {
+    if (S.on && S.sheetTables.has(t.no)) { toast('시트 표에 있는 테이블이에요. 시트의 테이블 표에서 지운 뒤 다시 불러오세요', 4200); return; }
+    const n = filled(t);
+    if (!confirm(`${t.no}번 테이블을 지울까요?` + (n ? `\n이름 ${n}개도 함께 지워져요.` : '') + '\n(되돌리기로 살릴 수 있어요)')) return;
+    state.tables = state.tables.filter(x => x.id !== t.id); selected = null;
+    commit(); renderTables(); renderPanel(); toast(`${t.no}번 테이블을 지웠어요`);
+  };
+  bindPic(t);
+}
+function seatChanged(t) {
+  refreshTable(t); $('#tPic').innerHTML = seatPic(t); bindPic(t); renderStats();
+  $('#tCount').textContent = `${filled(t)}명 / 정원 ${t.cap}`;
+  const counts = nameCounts(); let dup = false;
+  $('#tabTable').querySelectorAll('.seats li').forEach((li, i) => {
+    const d = !t.gids[i] && counts.get(t.names[i].trim()) > 1; li.classList.toggle('dup', d); dup = dup || d;
+  });
+  $('#tDupNote').hidden = !dup;
+}
+function bindPic(t) {
+  $('#tPic').querySelectorAll('.seat').forEach(s => s.onclick = () => {
+    const inp = $(`#tabTable input[data-i="${s.dataset.i}"]`); if (inp) { inp.focus(); inp.select(); }
+  });
+}
+
+/* ---------- 하객 칸 (시트) ---------- */
+function renderGuestsTab() {
+  const box = $('#tabGuests');
+  if (!S.on) {
+    box.innerHTML = `<div class="empty"><b>구글 시트와 연결해 주세요</b>"하객 좌석 및 테이블 배정" 시트의 하객 명단을 불러와 테이블로 끌어다 앉힐 수 있어요. 앉힌 테이블은 시트의 배정 테이블 칸에 바로 적혀요.<br><br><button class="primary" id="gConnect">구글 시트 연결</button></div>`;
+    $('#gConnect').onclick = openSheetDlg;
+    return;
+  }
+  const seatedNo = new Map();
+  for (const t of state.tables) t.gids.forEach(k => { if (k && !seatedNo.has(k)) seatedNo.set(k, t.no); });
+  const q = gQuery.toLowerCase();
+  let list = S.guests.filter(g => {
+    if (gSide && !g.side.includes(gSide)) return false;
+    if (q && !(g.name.toLowerCase().includes(q) || g.rel.toLowerCase().includes(q) || g.comp.toLowerCase().includes(q))) return false;
+    if (gFilter === 'none') return !seatedNo.has(g.key) && !g.off;
+    if (gFilter === 'seated') return seatedNo.has(g.key);
+    return true;
+  });
+  const live = S.guests.filter(g => !g.off), noneN = live.filter(g => !seatedNo.has(g.key));
+  const ppl = arr => arr.reduce((s, g) => s + g.count, 0);
+  let html = `
+    <div class="l-head">
+      <input id="gFilter" type="search" placeholder="하객 이름, 소속/관계 찾기" value="${esc(gQuery)}" autocomplete="off">
+      <div class="l-row">
+        <div class="seg"><button data-gf="none" class="${gFilter === 'none' ? 'on' : ''}">자리 없음 ${noneN.length}</button><button data-gf="seated" class="${gFilter === 'seated' ? 'on' : ''}">자리 있음 ${live.length - noneN.length}</button><button data-gf="all" class="${gFilter === 'all' ? 'on' : ''}">전체 ${S.guests.length}</button></div>
+        <select id="gSide"><option value="">양측</option><option ${gSide === '신랑' ? 'selected' : ''} value="신랑">신랑측</option><option ${gSide === '신부' ? 'selected' : ''} value="신부">신부측</option></select>
+      </div>
+    </div>
+    <p class="note">자리 없는 하객 ${noneN.length}줄 (${ppl(noneN)}명). 하객을 배치도의 테이블로 끌어다 놓거나, 하객을 누른 뒤 테이블을 누르세요. 한 줄의 인원만큼 자리를 차지해요.</p>`;
+  if (!list.length) html += `<div class="empty">${gFilter === 'none' && !q ? '<b>모든 하객이 자리에 앉았어요</b>' : '해당하는 하객이 없어요'}</div>`;
+  else {
+    html += '<ul class="guests">';
+    let head = null;
+    for (const g of list) {
+      const h = `${g.side} ${g.rel}`.trim();
+      if (h !== head) { html += `<li class="gh">${esc(h || '구분 없음')}</li>`; head = h; }
+      const no = seatedNo.get(g.key), sc = sideCls(g.side);
+      html += `<li class="g ${S.pick === g.key ? 'sel' : ''} ${g.off ? 'off' : ''}" data-key="${esc(g.key)}">
+        <b><i style="background:${sc === 'groom' ? C.groom : sc === 'bride' ? C.bride : C.gold}"></i>${esc(g.name)}${/△|미정/.test(g.attend) ? '<span class="badge">미정</span>' : ''}${g.off ? '<span class="badge">불참</span>' : ''}</b>
+        <span class="gm">${esc([g.comp && `동반 ${g.comp}`, g.countBlank ? '인원 빈칸(1명으로)' : ''].filter(Boolean).join(', ') || g.rel)}</span>
+        <span class="gw ${no ? '' : 'none'}"><b>${no ? `${no}번` : '자리 없음'}</b>${g.count}명</span></li>`;
+    }
+    html += '</ul>';
+  }
+  html += `<div class="l-export" style="margin-top:10px"><button id="gReload">시트에서 다시 불러오기</button></div>
+    <p class="note">시트 탭: ${esc(S.tab)}${S.version ? `   배치 저장 ${S.version}번째` : ''}</p>`;
+  box.innerHTML = html;
+  const f = $('#gFilter');
+  f.oninput = () => { gQuery = f.value; const pos = f.value.length; renderGuestsTab(); const n = $('#gFilter'); n.focus(); n.setSelectionRange(pos, pos); };
+  box.querySelectorAll('[data-gf]').forEach(b => b.onclick = () => { gFilter = b.dataset.gf; renderGuestsTab(); });
+  $('#gSide').onchange = e => { gSide = e.target.value; renderGuestsTab(); };
+  $('#gReload').onclick = () => pull(true);
+  box.querySelectorAll('li.g').forEach(li => bindGuestDrag(li));
+}
+// 하객 줄: 누르면 고르기(그다음 테이블을 누름), 마우스로 끌면 테이블에 놓기
+function bindGuestDrag(li) {
+  const key = li.dataset.key;
+  li.onpointerdown = e => {
+    if (e.button !== 0) return;
+    const g = S.byKey.get(key); if (!g) return;
+    const st = { x: e.clientX, y: e.clientY, ghost: null, over: null, moved: false };
+    const canDrag = e.pointerType !== 'touch';
+    if (canDrag) e.preventDefault();   // 끄는 동안 글자가 선택되지 않게
+    const move = ev => {
+      if (Math.hypot(ev.clientX - st.x, ev.clientY - st.y) >= 8) st.moved = true;   // 손가락으로 목록을 밀어 올린 것은 고르기가 아니다
+      if (!canDrag) return;
+      if (!st.ghost && Math.hypot(ev.clientX - st.x, ev.clientY - st.y) < 6) return;
+      if (!st.ghost) {
+        document.body.classList.add('dragging-guest');
+        st.ghost = document.createElement('div'); st.ghost.className = 'ghost';
+        st.ghost.textContent = `${g.name}${g.count > 1 ? ` 일행 ${g.count}명` : ''}`;
+        document.body.appendChild(st.ghost);
+      }
+      st.ghost.style.left = ev.clientX + 'px'; st.ghost.style.top = ev.clientY + 'px';
+      const tg = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.('.tbl');
+      if (st.over && st.over !== tg) st.over.classList.remove('drop');
+      if (tg) tg.classList.add('drop');
+      st.over = tg || null;
+    };
+    const up = ev => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+      document.body.classList.remove('dragging-guest');
+      if (st.ghost) {
+        st.ghost.remove(); if (st.over) st.over.classList.remove('drop');
+        if (st.over) assignGuest(g, byId(st.over.dataset.id));
+      } else if (!st.moved || canDrag) setPick(S.pick === key ? null : key);
+    };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+}
+
+/* ---------- 전체 명단 ---------- */
+function guestRows(includeBlank) {
+  const rows = [];
+  for (const t of sortedTables()) t.names.forEach((n, i) => {
+    const name = n.trim(), gu = guestOfSeat(t, i);
+    if (name || includeBlank) rows.push({ id: t.id, no: t.no, seat: i + 1, name, group: t.group.trim(), side: gu ? gu.side : '', rel: gu ? gu.rel : '', gid: t.gids[i] });
+  });
+  return rows;
+}
+const ko = (a, b) => a.localeCompare(b, 'ko');
+function sortRows(rows, how) {
+  return how === 'name' ? rows.sort((a, b) => ko(a.name, b.name) || a.no - b.no || a.seat - b.seat)
+                        : rows.sort((a, b) => a.no - b.no || a.seat - b.seat);
+}
+function renderListTab() {
+  const box = $('#tabList'), q = query.toLowerCase();
+  let rows = guestRows(listBlank);
+  if (q) rows = rows.filter(r => r.name.toLowerCase().includes(q) || r.group.toLowerCase().includes(q) || r.rel.toLowerCase().includes(q) || String(r.no) === q);
+  sortRows(rows, listSort);
+  const dups = [...nameCounts()].filter(([, c]) => c > 1);
+  box.innerHTML = `
+    <div class="l-head">
+      <input id="lFilter" type="search" placeholder="이름, 그룹, 테이블 번호 찾기" value="${esc(query)}" autocomplete="off">
+      <div class="seg"><button data-sort="table" class="${listSort === 'table' ? 'on' : ''}">테이블순</button><button data-sort="name" class="${listSort === 'name' ? 'on' : ''}">가나다순</button></div>
+    </div>
+    <div class="l-export"><button data-exp="table">엑셀로 받기 (테이블순)</button><button data-exp="name">엑셀로 받기 (가나다순)</button></div>
+    <label class="l-opt"><input type="checkbox" id="lBlank" ${listBlank ? 'checked' : ''}> 빈자리도 함께 보기와 받기</label>
+    ${dups.length ? `<p class="note warn">같은 이름(직접 적은 이름): ${dups.map(([n, c]) => `${esc(n)} ${c}명`).join(', ')}</p>` : ''}
+    ${rows.length ? `<table class="glist"><thead><tr><th>이름</th><th>테이블</th><th>자리</th><th>그룹</th></tr></thead><tbody>
+      ${rows.map(r => `<tr data-id="${r.id}" data-seat="${r.seat - 1}"><td>${r.name ? esc(r.name) : '<span style="color:#C9BEAD">빈자리</span>'}</td><td class="n">${r.no}번</td><td class="n">${r.seat}</td><td class="g">${esc(r.group)}</td></tr>`).join('')}
+      </tbody></table>` : `<div class="empty">${q ? '찾는 이름이 없어요' : '<b>아직 넣은 이름이 없어요</b>테이블을 눌러 이름을 넣거나, 아래 "엑셀에서 붙여넣기"로 한 번에 넣을 수 있어요.'}</div>`}
+    <details class="box" style="margin-top:12px"><summary>엑셀에서 붙여넣기</summary>
+      <p>엑셀에서 <b>테이블 번호, 이름</b> 두 칸(또는 <b>테이블 번호, 자리, 이름</b> 세 칸)을 골라 복사한 뒤 붙여넣으세요. 자리를 비우면 그 테이블의 빈자리에 차례로 들어가요. 없는 테이블 번호는 건너뛰어요.${S.on ? ' 여기서 넣은 이름은 시트 하객과 이어지지 않는 직접 적은 이름이에요.' : ''}</p>
+      <textarea id="lImport" placeholder="12	김명준&#10;12	신채흔&#10;13	3	홍길동"></textarea>
+      <button id="lImportGo">명단에 넣기</button>
+    </details>
+    <p class="note">명단 파일은 엑셀에서 바로 열리는 CSV 예요 (테이블, 자리, 이름, 측, 관계, 그룹).</p>`;
+  const f = $('#lFilter');
+  f.oninput = () => { setQuery(f.value); const pos = f.value.length; renderListTab(); const n = $('#lFilter'); n.focus(); n.setSelectionRange(pos, pos); };
+  box.querySelectorAll('[data-sort]').forEach(b => b.onclick = () => { listSort = b.dataset.sort; renderListTab(); });
+  box.querySelectorAll('[data-exp]').forEach(b => b.onclick = () => exportCsv(b.dataset.exp));
+  $('#lBlank').onchange = e => { listBlank = e.target.checked; renderListTab(); };
+  box.querySelectorAll('tr[data-id]').forEach(tr => tr.onclick = () => select(tr.dataset.id, +tr.dataset.seat));
+  $('#lImportGo').onclick = importPaste;
+}
+function setQuery(v) {
+  query = v.trim();
+  if ($('#search').value !== v) $('#search').value = v;
+  renderTables();
+  const hit = query ? state.tables.filter(matches).length : 0;
+  $('#searchInfo').textContent = query ? (hit ? `테이블 ${hit}개` : '없음') : '';
+}
+$('#search').addEventListener('input', e => { setQuery(e.target.value); if (tab === 'list') renderListTab(); });
+$('#search').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.isComposing) return;
+  const hit = sortedTables().filter(matches);
+  if (hit.length === 1) {
+    const t = hit[0], q = query.toLowerCase(), i = t.names.findIndex(n => n.toLowerCase().includes(q));
+    select(t.id, i >= 0 ? i : null);
+  } else if (hit.length > 1) setTab('list');
+});
+
+function importPaste() {
+  const lines = $('#lImport').value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  let put = 0; const skipped = [];
+  for (const line of lines) {
+    const cells = line.split(/\t|,/).map(s => s.trim());
+    const no = parseInt(cells[0], 10), t = state.tables.find(x => x.no === no);
+    let seat = null, name;
+    if (cells.length >= 3 && /^\d+$/.test(cells[1])) { seat = parseInt(cells[1], 10) - 1; name = cells.slice(2).join(' ').trim(); }
+    else name = cells.slice(1).join(' ').trim();
+    if (!t || !name) { skipped.push(line); continue; }
+    if (seat != null && seat >= 0 && seat < MAX_SEATS) {
+      while (t.names.length <= seat) { t.names.push(''); t.gids.push(''); }
+      if (t.cap < t.names.length) t.cap = t.names.length;
+      if (!t.gids[seat]) { t.names[seat] = name; put++; continue; }
+    }
+    const i = t.names.findIndex(n => !n.trim());
+    if (i >= 0) { t.names[i] = name; t.gids[i] = ''; put++; }
+    else if (t.names.length < MAX_SEATS) { t.names.push(name); t.gids.push(''); t.cap = Math.max(t.cap, t.names.length); put++; }
+    else skipped.push(line);
+  }
+  commit(); renderTables(); renderListTab(); renderStats();
+  $('#lImport').value = skipped.join('\n');
+  if (skipped.length) $('#lImport').closest('details').open = true;
+  toast(`${put}명 넣었어요` + (skipped.length ? `. ${skipped.length}줄은 넣지 못해 남겨 뒀어요 (없는 테이블 번호이거나 이름이 비었어요)` : ''));
+}
+
+function renderStats() {
+  const seats = state.tables.reduce((s, t) => s + t.cap, 0);
+  const got = state.tables.reduce((s, t) => s + filled(t), 0);
+  let html = `<span class="chip">테이블<b>${state.tables.length}</b></span><span class="chip">정원<b>${seats}</b></span>
+    <span class="chip">앉은 자리<b>${got}</b></span><span class="chip">빈자리<b>${Math.max(0, seats - got)}</b></span>`;
+  if (S.on) {
+    const seated = new Set(); state.tables.forEach(t => t.gids.forEach(k => k && seated.add(k)));
+    const wait = S.guests.filter(g => !g.off && !seated.has(g.key));
+    html += `<span class="chip ${wait.length ? 'warn' : ''}">자리 없는 하객<b>${wait.reduce((s, g) => s + g.count, 0)}명</b></span>`;
+  }
+  $('#stats').innerHTML = html;
+}
+function renderAll() { renderTables(); renderPanel(); }
+
+/* ---------- 테이블 추가, 번호 다시 매기기 ---------- */
+function freeSpot(near = [165, 318]) {
+  const hitsBlock = (x, y) => BLOCKS.some(([x0, y0, x1, y1]) => x + REACH > x0 && x - REACH < x1 && y + REACH > y0 && y - REACH < y1);
+  const hitsTable = (x, y) => state.tables.some(t => Math.hypot(t.x - x, t.y - y) < REACH * 2 + 1);
+  const hitsHigh = (x, y) => HIGH.some(([hx, hy]) => Math.hypot(hx - x, hy - y) < REACH + 8);
+  const cands = [];
+  for (let y = ROOM[1] + REACH; y <= ROOM[3] - REACH; y += 4)
+    for (let x = ROOM[0] + REACH; x <= ROOM[2] - REACH; x += 4)
+      if (!hitsBlock(x, y) && !hitsTable(x, y) && !hitsHigh(x, y)) cands.push([x, y]);
+  if (!cands.length) return near;
+  cands.sort((a, b) => Math.hypot(a[0] - near[0], a[1] - near[1]) - Math.hypot(b[0] - near[0], b[1] - near[1]));
+  return cands[0];
+}
+function newTable(no, cap = DEFAULT_SEATS) {
+  const [x, y] = freeSpot();
+  const t = { id: 't' + (state.nextId++), no, x, y, group: '', cap, names: Array(cap).fill(''), gids: Array(cap).fill('') };
+  state.tables.push(t);
+  return t;
+}
+$('#addTable').onclick = () => {
+  const no = Math.max(0, ...state.tables.map(t => t.no), ...S.sheetTables.keys()) + 1;
+  const t = newTable(no); commit(); select(t.id);
+  toast(`${no}번 테이블을 놓았어요. 끌어서 원하는 자리로 옮기세요` + (S.on ? ' (시트 테이블 표에도 한 줄 추가돼요)' : ''), 3600);
+};
+function renumber() {
+  if (S.on) { toast('시트와 연결 중에는 번호를 다시 매길 수 없어요 (시트의 배정 테이블이 모두 바뀌어서)', 4200); return; }
+  if (!confirm('테이블 번호를 자리 순서(위에서 아래, 같은 줄은 왼쪽에서 오른쪽)로 다시 매길까요?\n이름과 그룹명은 테이블을 따라가요.')) return;
+  const ts = [...state.tables].sort((a, b) => a.y - b.y), rows = [];
+  for (const t of ts) { const r = rows[rows.length - 1]; if (r && Math.abs(r[0].y - t.y) < 10) r.push(t); else rows.push([t]); }
+  let no = 1; rows.forEach(r => r.sort((a, b) => a.x - b.x).forEach(t => { t.no = no++; }));
+  commit(); renderAll(); toast('번호를 다시 매겼어요');
+}
+
+/* ---------- 구글 시트 연결 ---------- */
+function loadSheetCfg() { try { return JSON.parse(localStorage.getItem(SHEET_KEY) || '{}'); } catch (e) { return {}; } }
+function saveSheetCfg() {
+  try { localStorage.setItem(SHEET_KEY, JSON.stringify({ api: S.api, token: S.token, who: S.who, synced: S.synced })); } catch (e) {}
+}
+async function api(action, body = {}) {
+  const res = await fetch(S.api, { method: 'POST', body: JSON.stringify({ token: S.token, action, ...body }), redirect: 'follow' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+function setSync(kind, text) {
+  const b = $('#sheetBtn');
+  b.classList.toggle('on', kind === 'ok'); b.classList.toggle('busy', kind === 'busy'); b.classList.toggle('err', kind === 'err');
+  b.querySelector('span').textContent = text;
+}
+const hash = s => { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0; return String(h); };
+// 시트 숨긴 탭에 두는 배치 (시트 하객 자리의 이름은 시트에서 다시 만들므로 비운다. 그룹명과 정원은 시트 표가 정본)
+function layoutOf(s) {
+  return { v: 2, nextId: s.nextId, tables: s.tables.map(t => ({ id: t.id, no: t.no, x: t.x, y: t.y, cap: t.cap,
+    names: t.names.map((n, i) => t.gids[i] ? '' : n), gids: t.gids })) };
+}
+function snapshot(s) {
+  const assign = {}, tables = {};
+  for (const g of S.guests) assign[g.key] = tableOfGuest(s, g.key);
+  for (const t of s.tables) tables[t.no] = { memo: t.group.trim(), cap: t.cap };
+  return { assign, tables, layoutHash: hash(JSON.stringify(layoutOf(s))), version: S.version, stamp: S.stamp };
+}
+function diffOps(s, base) {
+  const ops = { assign: [], tables: [] };
+  if (!base) return ops;
+  for (const g of S.guests) {
+    const cur = tableOfGuest(s, g.key), was = g.key in base.assign ? base.assign[g.key] : g.table;
+    if (cur !== was) ops.assign.push({ key: g.key, table: cur });
+  }
+  for (const t of s.tables) {
+    const was = base.tables[t.no];
+    if (!was) ops.tables.push({ no: t.no, memo: t.group.trim(), cap: t.cap, create: true });
+    else {
+      const op = { no: t.no };
+      if (was.memo !== t.group.trim()) op.memo = t.group.trim();
+      if (was.cap !== t.cap) op.cap = t.cap;
+      if ('memo' in op || 'cap' in op) ops.tables.push(op);
+    }
+  }
+  return ops;
+}
+// 시트에서 받은 하객과 테이블 표로 상태를 맞춘다. base 는 테이블 위치와 자리 순서를 가져올 배치
+function applyRemote(r, base) {
+  setGuests(r.guests || []);
+  S.sheetTables = new Map((r.tables || []).map(t => [t.no, t]));
+  S.version = r.version || 0; S.stamp = r.stamp || ''; S.tab = r.tab || '';
+  const s = normalize(clone(validState(base) ? base : defaultState()));
+  state = s;
+  for (const st of r.tables || []) {
+    let t = byNo(st.no);
+    if (!t) t = newTable(st.no, Math.max(1, st.cap || DEFAULT_SEATS));
+    t.group = st.memo || '';
+    if (st.cap >= 1) t.cap = Math.min(MAX_SEATS, st.cap);
+    while (t.names.length < t.cap) { t.names.push(''); t.gids.push(''); }
+  }
+  // 시트 하객이 아니거나 다른 테이블로 옮겨진 자리는 비운다
+  for (const t of state.tables) t.gids.forEach((k, i) => {
+    if (!k) return;
+    const g = S.byKey.get(k);
+    if (!g || g.table !== t.no) { t.names[i] = ''; t.gids[i] = ''; }
+  });
+  // 시트에 배정된 하객을 그 테이블에 앉힌다 (있던 자리는 그대로, 인원이 바뀌면 늘리고 줄인다)
+  for (const g of S.guests) {
+    if (!g.table) continue;
+    const t = byNo(g.table) || newTable(g.table);
+    let have = [];
+    t.gids.forEach((k, i) => { if (k === g.key) have.push(i); });
+    while (have.length > g.count) { const i = have.pop(); t.names[i] = ''; t.gids[i] = ''; }
+    if (have.length < g.count) {
+      const free = new Set(); t.names.forEach((n, i) => { if (!n.trim()) free.add(i); });
+      let need = g.count - have.length;
+      while (free.size < need) { free.add(t.names.length); t.names.push(''); t.gids.push(''); }
+      have = have.concat(chooseSeats(t, need, free));
+    }
+    have.sort((a, b) => a - b).forEach((i, k) => { t.names[i] = g.labels[k]; t.gids[i] = g.key; });
+  }
+  state.tables.forEach(trimSeats);
+  // 시트에서 읽은 그대로를 "맞춘 상태" 로 둔다 (그 뒤에 바꾼 것만 시트에 적는다)
+  const snap = snapshot(state);
+  snap.assign = Object.fromEntries(S.guests.map(g => [g.key, g.table && byNo(g.table) ? g.table : null]));
+  snap.tables = Object.fromEntries((r.tables || []).map(t => [t.no, { memo: t.memo || '', cap: t.cap }]));
+  // 시트의 배치를 그대로 썼으면 지금 모습이 저장된 것과 같다고 본다 (하객 자리는 시트에서 다시 만들 수 있으니 또 적지 않는다)
+  snap.layoutHash = base && base === r.layout ? hash(JSON.stringify(layoutOf(state))) : r.layout ? hash(JSON.stringify(layoutOf(normalize(clone(r.layout))))) : '';
+  S.synced = snap;
+  hist = []; future = []; committed = JSON.stringify(state);
+  persist(); updateUndo();
+}
+// 시트에서 다시 읽기. 이 브라우저에서 아직 못 적은 것이 있으면 먼저 적는다
+async function pull(manual, preferRemote) {
+  if (!S.on) return;
+  if (S.busy) { S.again = true; return; }
+  try {
+    setSync('busy', '시트 불러오는 중');
+    const r = await api('load');
+    if (!r.ok) throw new Error(r.error === 'auth' ? '비밀번호가 맞지 않아요' : (r.message || r.error));
+    const pending = diffOps(state, S.synced), layoutPending = S.synced && hash(JSON.stringify(layoutOf(state))) !== S.synced.layoutHash;
+    const remoteMoved = r.version !== (S.synced ? S.synced.version : -1);
+    let base = r.layout || state;   // 시트에 배치가 아직 없으면 지금 배치를 그대로
+    if (layoutPending && !remoteMoved && !preferRemote) base = state;
+    applyRemote(r, base);
+    reapply(pending);
+    renderAll();
+    setSync('ok', '시트 연결됨');
+    if (manual) toast(`시트에서 불러왔어요 (하객 ${S.guests.length}줄, 테이블 ${S.sheetTables.size}개)`);
+    if (pending.assign.length || pending.tables.length || (layoutPending && !preferRemote)) schedulePush(true);
+  } catch (e) {
+    setSync('err', '시트 연결 오류'); toast('시트를 불러오지 못했어요: ' + e.message, 4200);
+  }
+}
+// 연결 전에(또는 저장 실패로) 남은 바뀐 것을 시트 상태 위에 다시 얹는다
+function reapply(ops) {
+  for (const op of ops.tables || []) {
+    const t = byNo(op.no); if (!t) continue;
+    if ('memo' in op) t.group = op.memo;
+    if ('cap' in op) { t.cap = op.cap; while (t.names.length < t.cap) { t.names.push(''); t.gids.push(''); } }
+  }
+  for (const op of ops.assign || []) {
+    const g = S.byKey.get(op.key); if (!g) continue;
+    const mine = seatsOf(g.key); mine.forEach(({ t, i }) => { t.names[i] = ''; t.gids[i] = ''; });
+    const t = op.table && byNo(op.table);
+    if (t) {
+      const free = new Set(); t.names.forEach((n, i) => { if (!n.trim()) free.add(i); });
+      while (free.size < g.count) { free.add(t.names.length); t.names.push(''); t.gids.push(''); }
+      chooseSeats(t, g.count, free).forEach((i, k) => { t.names[i] = g.labels[k]; t.gids[i] = g.key; });
+    }
+  }
+  state.tables.forEach(trimSeats);
+  committed = JSON.stringify(state); persist();
+}
+let pushTimer;
+function schedulePush(now) {
+  if (!S.on) return;
+  clearTimeout(pushTimer);
+  setSync('busy', '시트에 적는 중');
+  pushTimer = setTimeout(push, now ? 0 : 700);
+}
+async function push(force) {
+  if (!S.on) return;
+  if (S.busy) { S.again = true; return; }
+  const ops = diffOps(state, S.synced), layout = layoutOf(state), lh = hash(JSON.stringify(layout));
+  const sendLayout = !S.synced || lh !== S.synced.layoutHash || force;
+  if (!ops.assign.length && !ops.tables.length && !sendLayout) { setSync('ok', '시트 저장됨'); return; }
+  S.busy = true;
+  const snap = snapshot(state);
+  try {
+    const r = await api('sync', { ops, layout: sendLayout ? layout : undefined, baseVersion: S.version, by: S.who, force: !!force });
+    if (!r.ok) throw new Error(r.error === 'auth' ? '비밀번호가 맞지 않아요' : (r.message || r.error));
+    S.version = r.version; S.stamp = r.stamp || S.stamp;
+    if (r.layoutConflict) {
+      // 하객 배정과 테이블 정보는 적었고, 테이블 위치만 다른 사람 것과 부딪힌 경우
+      snap.layoutHash = S.synced ? S.synced.layoutHash : '';
+      snap.version = r.version; S.synced = snap; saveSheetCfg();
+      S.busy = false;
+      const v = await ask('다른 사람이 먼저 저장했어요', `${r.savedAt}에 ${r.savedBy ? r.savedBy + ' 님이' : '다른 곳에서'} 테이블 위치를 저장했어요.\n하객 배정은 시트에 적었어요. 테이블 위치는 어느 쪽을 남길까요?`,
+        [{ v: 'mine', label: '내 배치로 덮어쓰기' }, { v: 'theirs', label: '그쪽 배치 불러오기', cls: 'primary' }]);
+      if (v === 'mine') return push(true);
+      return pull(true, true);
+    }
+    snap.version = r.version; snap.stamp = r.stamp || ''; S.synced = snap; saveSheetCfg();
+    const warn = [];
+    if (r.missing && r.missing.length) warn.push(`시트에서 찾지 못한 하객 ${r.missing.length}건 (이름이나 구분이 바뀌었을 수 있어요)`);
+    if (r.blocked && r.blocked.length) warn.push(`수식이 있어 못 적은 칸 ${r.blocked.length}건`);
+    setSync('ok', `시트 저장됨 ${new Date().toTimeString().slice(0, 5)}`);
+    if (warn.length) { toast(warn.join('. ') + '. 시트에서 다시 불러올게요', 5000); S.busy = false; return pull(); }
+  } catch (e) {
+    setSync('err', '시트 저장 실패 (누르면 다시)');
+    toast('시트에 적지 못했어요: ' + e.message + '. 이 브라우저에는 저장돼 있어요', 4500);
+  } finally {
+    S.busy = false;
+    if (S.again) { S.again = false; schedulePush(); }
+  }
+}
+// 다른 사람이나 시트에서 바뀐 것 살피기 (30초마다, 쉬고 있을 때만)
+setInterval(async () => {
+  if (!S.on || S.busy || drag || document.hidden || S.pick) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName)) return;
+  const p = diffOps(state, S.synced);
+  if (p.assign.length || p.tables.length || (S.synced && hash(JSON.stringify(layoutOf(state))) !== S.synced.layoutHash)) return;
+  try {
+    const r = await api('version');
+    if (r.ok && (r.version !== S.version || (r.stamp && r.stamp !== S.stamp))) { await pull(); toast('시트에서 바뀐 내용을 불러왔어요'); }
+  } catch (e) {}
+}, 30000);
+
+async function connect(apiUrl, token, who) {
+  S.api = apiUrl.trim(); S.token = token.trim(); S.who = (who || '').trim();
+  setSync('busy', '시트 연결 중');
+  const r = await api('load');
+  if (!r.ok) throw new Error(r.error === 'auth' ? '비밀번호가 맞지 않아요' : (r.message || r.error || '연결 실패'));
+  const prev = loadSheetCfg().synced;
+  setGuests(r.guests || []);   // diffOps 가 하객 목록을 쓰므로 먼저
+  const pending = prev ? diffOps(state, prev) : { assign: [], tables: [] };
+  const localMoved = prev ? hash(JSON.stringify(layoutOf(state))) !== prev.layoutHash : JSON.stringify(state) !== JSON.stringify(defaultState());
+  const remoteMoved = prev ? r.version !== prev.version : !!r.layout;
+  let base = r.layout || state;
+  if (r.layout && localMoved) {
+    if (!remoteMoved) base = state;
+    else {
+      const v = await ask('어느 배치를 쓸까요?', `시트에 ${r.savedAt}에 ${r.savedBy ? r.savedBy + ' 님이' : '누군가'} 저장한 테이블 위치가 있고, 이 브라우저에도 바꾼 배치가 있어요.\n(하객 배정은 어느 쪽이든 시트를 따라요)`,
+        [{ v: 'local', label: '이 브라우저 배치' }, { v: 'remote', label: '시트 배치', cls: 'primary' }]);
+      base = v === 'local' ? state : r.layout;
+    }
+  }
+  S.on = true;
+  applyRemote(r, base);
+  reapply(pending);
+  saveSheetCfg();
+  renderAll();
+  setSync('ok', '시트 연결됨');
+  schedulePush(true);
+  return r;
+}
+function openSheetDlg() {
+  const d = $('#sheetDlg'), cfg = loadSheetCfg();
+  $('#sApi').value = S.api || cfg.api || CFG.api || '';
+  $('#sToken').value = S.token || cfg.token || '';
+  $('#sWho').value = S.who || cfg.who || '';
+  $('#sMsg').hidden = true;
+  $('#sOff').hidden = !S.on;
+  $('#sGo').textContent = S.on ? '다시 연결' : '연결';
+  d.showModal();
+}
+$('#sheetBtn').onclick = () => { if (S.on && $('#sheetBtn').classList.contains('err')) push(); else openSheetDlg(); };
+$('#sClose').onclick = () => $('#sheetDlg').close();
+$('#sGo').onclick = async () => {
+  const msg = $('#sMsg'), apiUrl = $('#sApi').value.trim(), tk = $('#sToken').value.trim();
+  if (!/^https:\/\//.test(apiUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)/.test(apiUrl)) { msg.hidden = false; msg.textContent = '웹 앱 주소(https://script.google.com/macros/s/.../exec)를 넣어 주세요'; return; }
+  if (!tk) { msg.hidden = false; msg.textContent = '비밀번호를 넣어 주세요'; return; }
+  msg.hidden = false; msg.textContent = '연결하는 중...'; $('#sGo').disabled = true;
+  try {
+    const r = await connect(apiUrl, tk, $('#sWho').value);
+    $('#sheetDlg').close();
+    toast(`연결했어요. 하객 ${S.guests.length}줄, 테이블 ${S.sheetTables.size}개를 불러왔어요`, 3600);
+    setTab('guests');
+  } catch (e) {
+    S.on = false; setSync('', '구글 시트 연결');
+    msg.textContent = '연결하지 못했어요: ' + e.message;
+  } finally { $('#sGo').disabled = false; }
+};
+$('#sOff').onclick = () => {
+  if (!confirm('시트 연결을 끊을까요? 이 브라우저에 저장된 비밀번호도 지워요. 지금 배치는 이 브라우저에 남아요.')) return;
+  S.on = false; S.token = ''; S.synced = null; S.guests = []; S.byKey = new Map(); S.sheetTables = new Map(); setPick(null);
+  try { localStorage.setItem(SHEET_KEY, JSON.stringify({ api: S.api, who: S.who })); } catch (e) {}
+  setSync('', '구글 시트 연결'); $('#sheetDlg').close(); renderAll(); toast('시트 연결을 끊었어요');
+};
+
+/* ---------- 내보내기와 불러오기 ---------- */
+const today = () => { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`; };
+function download(name, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+function csvCell(v) { const s = String(v ?? ''); return /[",\n\r]/.test(s) || /^[=+\-@]/.test(s) ? `"${/^[=+\-@]/.test(s) ? "'" : ''}${s.replace(/"/g, '""')}"` : s; }
+function exportCsv(how) {
+  const rows = sortRows(guestRows(listBlank), how);
+  if (!rows.length) return toast('내보낼 이름이 아직 없어요');
+  const body = [['테이블', '자리', '이름', '측', '관계', '그룹'], ...rows.map(r => [r.no, r.seat, r.name, r.side, r.rel, r.group])]
+    .map(r => r.map(csvCell).join(',')).join('\r\n');
+  download(`좌석명단-${how === 'name' ? '가나다순' : '테이블순'}-${today()}.csv`, '﻿' + body, 'text/csv;charset=utf-8');
+  toast(`명단 ${rows.length}줄을 내려받았어요`);
+}
+function saveFile() {
+  download(`좌석배치-작업파일-${today()}.json`, JSON.stringify({ app: 'gala-seating-editor', savedAt: new Date().toISOString(), state }, null, 1), 'application/json');
+  toast('작업 파일을 내려받았어요');
+}
+$('#fileInput').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    const o = JSON.parse(await f.text()), s = o.state || o;
+    if (!validState(s)) throw new Error('bad');
+    if (!confirm(`"${f.name}" 을 불러올까요? 지금 화면의 배치는 바뀌어요 (되돌리기로 돌아올 수 있어요).`)) return;
+    state = normalize(s); selected = null; commit(); renderAll(); toast('작업 파일을 불러왔어요');
+  } catch (err) { toast('이 편집기의 작업 파일(.json)이 아니에요'); }
+};
+
+/* ---------- 인쇄 ---------- */
+const CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ', CHO_BASE = { 'ㄲ': 'ㄱ', 'ㄸ': 'ㄷ', 'ㅃ': 'ㅂ', 'ㅆ': 'ㅅ', 'ㅉ': 'ㅈ' };
+function initial(name) {
+  const c = name.charCodeAt(0);
+  if (c >= 0xAC00 && c <= 0xD7A3) { const ch = CHO[Math.floor((c - 0xAC00) / 588)]; return CHO_BASE[ch] || ch; }
+  return /[a-z]/i.test(name[0]) ? 'A-Z' : '기타';
+}
+function printView(kind) {
+  const area = $('#printArea');
+  const head = (t, sub) => `<div class="p-title"><h1>${t}</h1><p>${sub}</p></div>`;
+  const sub = 'THE WEDDING GALA DINNER SHOW   명준 &amp; 채흔   2026. 10. 17.';
+  if (kind === 'map') {
+    const svg = map.cloneNode(true);
+    svg.removeAttribute('id');
+    svg.classList.remove('picking');
+    svg.querySelectorAll('.tbl').forEach(g => g.classList.remove('sel', 'hitq', 'dim', 'dragging', 'drop'));
+    area.innerHTML = head('좌 석 배 치 도', sub) + '<div class="p-map"></div>';
+    area.querySelector('.p-map').appendChild(svg);
+  } else if (kind === 'tables') {
+    area.innerHTML = head('테이블별 명단', sub) + '<div class="p-cards">' + sortedTables().map(t => `
+      <div class="p-card"><h3><b>${t.no}</b><span>${esc(t.group)}</span></h3><ol>
+      ${t.names.map(n => n.trim() ? `<li>${esc(n.trim())}</li>` : '<li class="blank">빈자리</li>').join('')}</ol></div>`).join('') + '</div>';
+  } else {
+    // 자리 찾기용: "일행" 자리는 빼고 본인 이름만
+    const rows = sortRows(guestRows(false).filter(r => !/ 일행$/.test(r.name) && !(r.gid && S.byKey.get(r.gid) && S.byKey.get(r.gid).name !== r.name)), 'name');
+    if (!rows.length) return toast('인쇄할 이름이 아직 없어요');
+    let html = '', cur = null;
+    for (const r of rows) {
+      const k = initial(r.name);
+      if (k !== cur) { html += `<h4>${k}</h4>`; cur = k; }
+      html += `<div><b>${esc(r.name)}</b><span>${r.no}번 테이블</span></div>`;
+    }
+    area.innerHTML = head('자리 안내', sub + '   이름을 찾고 테이블 번호를 확인해 주세요') + `<div class="p-names">${html}</div>`;
+  }
+  $('#menu').open = false;
+  setTimeout(() => window.print(), 60);
+}
+
+/* ---------- 메뉴, 단축키 ---------- */
+$('#undo').onclick = undo; $('#redo').onclick = redo;
+document.querySelectorAll('.menu-list [data-act]').forEach(b => b.onclick = () => {
+  $('#menu').open = false;
+  ({
+    renumber, 'save-file': saveFile,
+    'load-file': () => S.on ? toast('시트와 연결 중에는 작업 파일을 불러올 수 없어요. 연결을 끊고 불러오세요', 4200) : $('#fileInput').click(),
+    'print-map': () => printView('map'), 'print-tables': () => printView('tables'), 'print-names': () => printView('names'),
+    reset: () => {
+      if (S.on) {
+        if (!confirm('테이블 위치만 처음 배치로 되돌릴까요? (하객 배정과 이름은 그대로예요)')) return;
+        const d = defaultState();
+        state.tables.forEach(t => { const o = d.tables.find(x => x.no === t.no); if (o) { t.x = o.x; t.y = o.y; } });
+        commit(); renderAll(); toast('테이블 위치를 처음 배치로 되돌렸어요'); return;
+      }
+      if (!confirm('스케치의 처음 배치(테이블 35개, 이름 없음)로 되돌릴까요?\n(되돌리기로 지금 상태로 돌아올 수 있어요)')) return;
+      state = defaultState(); selected = null; commit(); renderAll(); toast('처음 배치로 되돌렸어요');
+    },
+  })[b.dataset.act]();
+});
+document.addEventListener('click', e => { if (!e.target.closest('#menu')) $('#menu').open = false; });
+let nudgeTimer;
+document.addEventListener('keydown', e => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); saveFile(); return; }
+  if (e.key === 'Escape' && S.pick) { setPick(null); return; }
+  if (typing || !selected) return;
+  const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  if (d) {
+    e.preventDefault();
+    const t = byId(selected), k = e.shiftKey ? 5 : 1;
+    t.x = clampX(t.x + d[0] * k); t.y = clampY(t.y + d[1] * k);
+    map.querySelector(`.tbl[data-id="${t.id}"]`)?.setAttribute('transform', `translate(${t.x} ${t.y})`);
+    updateOverlapClasses();
+    clearTimeout(nudgeTimer); nudgeTimer = setTimeout(commit, 400);
+  } else if (e.key === 'Escape') { selected = null; renderTables(); renderPanel(); }
+});
+
+/* ---------- 시작 ---------- */
+state = load();
+committed = JSON.stringify(state);
+const fontsReady = ['500 10px "Noto Serif KR"', '500 10px "Cormorant Garamond"', '500 10px "Pretendard Variable"', '10px "Hastegi"']
+  .map(f => document.fonts.load(f, '0123456789가나다라그룹명STAGE').catch(() => null));
+Promise.all(fontsReady).then(() => {
+  drawRoom(); renderAll(); updateUndo();
+  const cfg = loadSheetCfg();
+  if (cfg.api && cfg.token) connect(cfg.api, cfg.token, cfg.who).catch(e => { S.on = false; setSync('err', '시트 연결 오류'); toast('시트에 연결하지 못했어요: ' + e.message, 4200); });
+  else if (CFG.api) setSync('', '구글 시트 연결');
+});
+</script>
+</body>
+</html>
