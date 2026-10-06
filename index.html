@@ -159,6 +159,11 @@ body.dragging-guest{user-select:none;-webkit-user-select:none;cursor:grabbing}
 .tbl .chair.groom{fill:var(--groom);stroke:var(--groom)}
 .tbl .chair.bride{fill:var(--bride);stroke:var(--bride)}
 .tbl .chair.over{stroke:var(--danger);stroke-width:.6}
+.tbl .chair-hit{fill:transparent;cursor:grab}
+.tbl .chair.drop{fill:var(--ok);stroke:var(--ok)}
+.seat-pic{touch-action:none}
+.seat-pic .seat.drop circle{stroke:var(--ok);stroke-width:3}
+.seat-pic .seat.dragfrom{opacity:.35}
 .tbl .ring{fill:none;stroke:none}
 .tbl.sel .top{stroke:var(--ink);stroke-width:1}
 .tbl.sel .ring{stroke:var(--ink);stroke-width:.5;stroke-dasharray:1.2 1.2}
@@ -248,7 +253,7 @@ dialog label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var
     </div>
     <div class="pickbar" id="pickbar" hidden><span id="pickText"></span><button id="pickCancel">취소</button></div>
     <svg id="map" viewBox="-4 -4 351 397" aria-label="좌석 배치도"></svg>
-    <p class="hint">테이블을 끌어서 옮기고, 눌러서 이름을 넣으세요. 선택한 테이블은 방향키로 조금씩(Shift 는 크게) 옮길 수 있어요. 작업은 이 브라우저에 저절로 저장돼요.
+    <p class="hint">테이블을 끌어서 옮기고, 눌러서 이름을 넣으세요. 이름이 있는 의자를 끌어 다른 의자에 놓으면 자리가 바뀌어요. 선택한 테이블은 방향키로 조금씩(Shift 는 크게) 옮길 수 있어요. 작업은 이 브라우저에 저절로 저장돼요.
       <span class="legend"><span><i style="background:var(--groom)"></i>신랑측</span><span><i style="background:var(--bride)"></i>신부측</span><span><i style="background:var(--gold)"></i>직접 적은 이름</span></span></p>
   </section>
   <aside class="panel">
@@ -329,7 +334,7 @@ const clone = o => JSON.parse(JSON.stringify(o));
 function defaultState() {
   const tables = []; let no = 1;
   ROWS.forEach((row, ri) => [...row[0], ...row[1]].forEach(x => {
-    tables.push({ id: 't' + no, no, x, y: ROW_Y[ri], group: '', cap: DEFAULT_SEATS, names: Array(DEFAULT_SEATS).fill(''), gids: Array(DEFAULT_SEATS).fill('') });
+    tables.push({ id: 't' + no, no, x, y: ROW_Y[ri], group: '', cap: DEFAULT_SEATS, names: Array(DEFAULT_SEATS).fill(''), gids: Array(DEFAULT_SEATS).fill(''), slots: Array(DEFAULT_SEATS).fill(-1) });
     no++;
   }));
   return { v: 2, nextId: no, tables };
@@ -349,11 +354,29 @@ function normalize(s) {
     t.gids = Array.isArray(t.gids) ? t.gids.map(g => String(g || '')) : [];
     while (t.gids.length < t.names.length) t.gids.push('');
     t.gids.length = t.names.length;
+    t.slots = Array.isArray(t.slots) ? t.slots.map(v => Number.isInteger(v) ? v : -1) : [];
+    while (t.slots.length < t.names.length) t.slots.push(-1);
+    t.slots.length = t.names.length;
+    fixSlots(t);
   }
   s.nextId = Math.max(s.nextId || 0, ...s.tables.map(t => parseInt(String(t.id).replace(/\D/g, ''), 10) || 0)) + 1;
   return s;
 }
-function trimSeats(t) { while (t.names.length > t.cap && !t.names[t.names.length - 1].trim()) { t.names.pop(); t.gids.pop(); } }
+// slots: 시트 하객 자리마다 그 하객 일행 안의 순번 (0 = 본인, 1.. = 동반인). 자리를 서로 바꿔도 누가 본인인지 섞이지 않게
+// 순번이 비었거나 겹치면 자리 번호 순서로 다시 매긴다
+function fixSlots(t) {
+  const groups = {};
+  t.gids.forEach((k, i) => { if (k) (groups[k] = groups[k] || []).push(i); else t.slots[i] = -1; });
+  for (const idx of Object.values(groups)) {
+    const got = idx.map(i => t.slots[i]);
+    const ok = got.every(v => v >= 0 && v < idx.length) && new Set(got).size === idx.length;
+    if (!ok) idx.forEach((i, k) => { t.slots[i] = k; });
+  }
+}
+function addSeat(t, name = '', gid = '', slot = -1) { t.names.push(name); t.gids.push(gid); t.slots.push(gid ? slot : -1); return t.names.length - 1; }
+function setSeat(t, i, name, gid = '', slot = -1) { t.names[i] = name; t.gids[i] = gid; t.slots[i] = gid ? slot : -1; }
+const clearSeat = (t, i) => setSeat(t, i, '');
+function trimSeats(t) { while (t.names.length > t.cap && !t.names[t.names.length - 1].trim()) { t.names.pop(); t.gids.pop(); t.slots.pop(); } }
 
 let storageOk = true;
 function persist() {
@@ -450,7 +473,8 @@ function chooseSeats(t, n, free) {
   }
   return [...free].sort((a, b) => a - b).slice(0, n);
 }
-async function assignGuest(g, t) {
+// prefer: 끌어다 놓은 자리 번호, preferSlot: 끌고 온 사람의 일행 안 순번 (그 사람은 그 자리에, 나머지는 가까운 빈자리에)
+async function assignGuest(g, t, prefer = null, preferSlot = 0) {
   if (!S.on) return;
   const n = g.count, mine = seatsOf(g.key);
   if (mine.length === n && mine.every(p => p.t === t)) { toast(`${g.name} 님은 이미 ${t.no}번 테이블에 있어요`); return; }
@@ -462,14 +486,22 @@ async function assignGuest(g, t) {
     const v = await ask('자리가 모자라요', `${t.no}번 테이블 빈자리가 ${free.size}개예요. ${g.name} 님 일행은 ${n}명이에요.`, [
       { v: 'cap', label: `정원을 ${t.cap + need}명으로 늘리기` }, { v: 'over', label: '정원은 두고 초과로 앉히기' }, { v: null, label: '취소' }]);
     if (!v) return;
-    for (let k = 0; k < need; k++) { free.add(t.names.length); t.names.push(''); t.gids.push(''); }
+    for (let k = 0; k < need; k++) free.add(addSeat(t));
     if (v === 'cap') t.cap = Math.min(MAX_SEATS, t.cap + need);
   }
   const from = [...new Set(mine.filter(p => p.t !== t).map(p => p.t.no))];
-  mine.forEach(({ t: pt, i }) => { pt.names[i] = ''; pt.gids[i] = ''; });
+  mine.forEach(({ t: pt, i }) => clearSeat(pt, i));
   state.tables.forEach(x => { if (x !== t) trimSeats(x); });
-  const pick = chooseSeats(t, n, free).sort((a, b) => a - b);   // 첫 자리(번호가 가장 작은 자리)가 본인
-  g.labels.forEach((lb, k) => { t.names[pick[k]] = lb; t.gids[pick[k]] = g.key; });
+  if (prefer != null && free.has(prefer)) {
+    // 놓은 자리에서 가까운 빈자리 순서
+    const len = t.names.length, near = [...free].filter(i => i !== prefer).sort((a, b) => Math.min((a - prefer + len) % len, (prefer - a + len) % len) - Math.min((b - prefer + len) % len, (prefer - b + len) % len));
+    const others = [...Array(n).keys()].filter(k => k !== preferSlot);
+    setSeat(t, prefer, g.labels[preferSlot], g.key, preferSlot);
+    others.forEach((k, m) => setSeat(t, near[m], g.labels[k], g.key, k));
+  } else {
+    const pick = chooseSeats(t, n, free).sort((a, b) => a - b);   // 첫 자리(번호가 가장 작은 자리)가 본인
+    g.labels.forEach((lb, k) => setSeat(t, pick[k], lb, g.key, k));
+  }
   trimSeats(t);
   commit(); renderAll();
   toast(`${g.name} 님${n > 1 ? ` 일행 ${n}명` : ''}을 ${t.no}번 테이블에 앉혔어요` + (from.length ? ` (${from.join(', ')}번에서 옮김)` : ''));
@@ -478,18 +510,18 @@ function unseatGuest(g) {
   const mine = seatsOf(g.key);
   if (!mine.length) return;
   const no = mine[0].t.no;
-  mine.forEach(({ t, i }) => { t.names[i] = ''; t.gids[i] = ''; });
+  mine.forEach(({ t, i }) => clearSeat(t, i));
   state.tables.forEach(trimSeats);
   commit(); renderAll(); toast(`${g.name} 님을 ${no}번 테이블에서 뺐어요 (되돌리기로 살릴 수 있어요)`);
 }
 
-// 하객 자리를 번호 순서로 (첫 자리 = 본인, 나머지 = 동반인)
+// 하객 자리를 일행 순번 순서로 (순번 0 = 본인, 나머지 = 동반인. 자리 번호와는 상관없다)
 function guestSeats(s, key) {
   const out = [];
-  s.tables.forEach(t => t.gids.forEach((k, i) => { if (k === key) out.push({ t, i }); }));
-  return out.sort((a, b) => a.t === b.t ? a.i - b.i : a.t.no - b.t.no);
+  s.tables.forEach(t => t.gids.forEach((k, i) => { if (k === key) out.push({ t, i, k: t.slots ? t.slots[i] : -1 }); }));
+  return out.sort((a, b) => (a.k - b.k) || (a.t === b.t ? a.i - b.i : a.t.no - b.t.no));
 }
-function relabel(g) { guestSeats(state, g.key).forEach(({ t, i }, k) => { if (g.labels[k]) t.names[i] = g.labels[k]; }); }
+function relabel(g) { guestSeats(state, g.key).forEach(({ t, i }, k) => { if (g.labels[k]) { t.names[i] = g.labels[k]; t.slots[i] = k; } }); }
 // 동반인 칸에 적을 글: 고친 이름들 ("OO 일행" 은 빼고) + 원래 칸의 "(불참)" 표시
 function compText(g, want) {
   const keep = want.filter(x => x && !/ 일행$/.test(x));
@@ -507,14 +539,14 @@ function linkByName(t, i, name) {
   if (!S.on || !name) return null;
   const g = S.guests.find(x => !x.off && x.name === name && !seatsOf(x.key).length);
   if (!g) return null;
-  t.gids[i] = g.key; t.names[i] = g.labels[0];
+  setSeat(t, i, g.labels[0], g.key, 0);
   const free = [];
   t.names.forEach((n, j) => { if (j !== i && !n.trim()) free.push(j); });
   free.sort((a, b) => ((a - i + t.names.length) % t.names.length) - ((b - i + t.names.length) % t.names.length));
   for (let k = 1; k < g.count; k++) {
     let j = free.shift();
-    if (j === undefined) { j = t.names.length; t.names.push(''); t.gids.push(''); }
-    t.names[j] = g.labels[k]; t.gids[j] = g.key;
+    if (j === undefined) j = addSeat(t);
+    setSeat(t, j, g.labels[k], g.key, k);
   }
   return g;
 }
@@ -648,8 +680,11 @@ function tableNode(t) {
   t.names.forEach((name, i) => {
     const a = (-90 + i * 360 / n) * Math.PI / 180, gu = guestOfSeat(t, i);
     const cls = 'chair' + (name.trim() ? (gu ? ' ' + (sideCls(gu.side) || 'on') : ' on') : '') + (i >= t.cap ? ' over' : '');
-    const c = el('circle', { class: cls, cx: CHAIR_R * Math.cos(a), cy: CHAIR_R * Math.sin(a), r: CHAIR_SIZE }, g);
-    el('title', {}, c).textContent = `${t.no}번 ${i + 1}번 자리: ${name.trim() || '(빈자리)'}${gu ? ` (${gu.side} ${gu.rel})` : ''}${i >= t.cap ? ' 정원 초과' : ''}`;
+    const cx = CHAIR_R * Math.cos(a), cy = CHAIR_R * Math.sin(a);
+    el('circle', { class: cls, cx, cy, r: CHAIR_SIZE, 'data-i': i }, g);
+    // 의자를 잡기 쉽게 보이지 않는 큰 원 (이름이 있으면 끌어서 다른 자리로)
+    const h = el('circle', { class: 'chair-hit', cx, cy, r: 3.6, 'data-i': i }, g);
+    el('title', {}, h).textContent = `${t.no}번 ${i + 1}번 자리: ${name.trim() || '(빈자리)'}${gu ? ` (${gu.side} ${gu.rel})` : ''}${i >= t.cap ? ' 정원 초과' : ''}${name.trim() ? '. 끌어서 다른 자리로 옮길 수 있어요' : ''}`;
   });
   el('circle', { class: 'top', r: T_R }, g);
   el('circle', { class: 'inner', r: 12.4 }, g);
@@ -710,6 +745,11 @@ map.addEventListener('pointerdown', e => {
     return;
   }
   if (!g) { if (selected) { selected = null; renderTables(); renderPanel(); } return; }
+  const ch = e.target.closest('.chair-hit');
+  if (ch) {
+    const ct = byId(g.dataset.id), ci = +ch.dataset.i;
+    if (ct.names[ci] && ct.names[ci].trim()) { startSeatDrag(e, ct, ci); e.preventDefault(); return; }
+  }
   const t = byId(g.dataset.id), p = toSvg(e);
   drag = { t, g, dx: p.x - t.x, dy: p.y - t.y, sx: e.clientX, sy: e.clientY, moved: false };
   map.setPointerCapture(e.pointerId);
@@ -803,6 +843,7 @@ function renderTableTab() {
       <label>${S.on ? '그룹명 (시트 메모)' : '그룹명'}<input id="tGroup" type="text" value="${esc(t.group)}" placeholder="예: 신랑 대학 동기" maxlength="${S.on ? 200 : 40}"></label>
     </div>
     <div id="tPic">${seatPic(t)}</div>
+    <p class="note" style="text-align:center;margin-top:-2px">자리를 끌어 다른 자리에 놓으면 서로 바뀌어요. 배치도의 다른 테이블 의자에 놓으면 그 테이블로 옮겨요.</p>
     <div class="seat-count">${S.on ? '정원' : '자리 수'} <button id="tLess" aria-label="자리 하나 빼기">−</button><b>${t.cap}</b><button id="tMore" aria-label="자리 하나 더하기">+</button></div>
     ${over ? `<p class="note warn">정원 ${t.cap}명보다 ${t.names.length - t.cap}명 더 앉아 있어요 (빨간 번호).</p>` : ''}
     <ol class="seats">${t.names.map((n, i) => {
@@ -868,20 +909,20 @@ function renderTableTab() {
       const i = t.names.length - 1, last = t.names[i].trim();
       if (t.gids[i]) { toast(`${t.cap}번 자리에 시트 하객이 앉아 있어요. 먼저 빼 주세요`); return; }
       if (last && !confirm(`${t.cap}번 자리의 "${last}" 님이 함께 지워져요. 줄일까요?`)) return;
-      t.names.pop(); t.gids.pop();
+      t.names.pop(); t.gids.pop(); t.slots.pop();
     }
     t.cap--; commit(); refreshTable(t); updateOverlapClasses(); renderPanel();
   };
   $('#tMore').onclick = () => {
     if (t.cap >= MAX_SEATS) return toast(`한 테이블은 ${MAX_SEATS}자리까지예요`);
-    t.cap++; while (t.names.length < t.cap) { t.names.push(''); t.gids.push(''); }
+    t.cap++; while (t.names.length < t.cap) addSeat(t);
     commit(); refreshTable(t); renderPanel();
   };
   $('#tBulkGo').onclick = () => {
     const ta = $('#tBulk'), list = ta.value.split(/[\n,\t]+/).map(s => s.trim()).filter(Boolean);
     if (!list.length) return;
     let put = 0;
-    for (let i = 0; i < t.names.length && put < list.length; i++) if (!t.names[i].trim()) { t.names[i] = list[put++]; t.gids[i] = ''; }
+    for (let i = 0; i < t.names.length && put < list.length; i++) if (!t.names[i].trim()) setSeat(t, i, list[put++]);
     const left = list.slice(put);
     commit(); refreshTable(t); renderPanel();
     if (left.length) { $('#tBulk').value = left.join('\n'); $('#tBulk').closest('details').open = true; toast(`${put}명 넣었어요. 자리가 모자라 ${left.length}명은 남겨 뒀어요`); }
@@ -890,7 +931,7 @@ function renderTableTab() {
   $('#tClear').onclick = () => {
     const sheetN = t.gids.filter(Boolean).length;
     if (!filled(t) || !confirm(`${t.no}번 테이블의 이름 ${filled(t)}개를 모두 지울까요?` + (sheetN ? '\n시트 하객은 시트의 배정 테이블도 비워져요.' : ''))) return;
-    t.names = t.names.map(() => ''); t.gids = t.gids.map(() => ''); trimSeats(t);
+    t.names.forEach((_, i) => clearSeat(t, i)); trimSeats(t);
     commit(); refreshTable(t); renderPanel();
   };
   $('#tDelete').onclick = () => {
@@ -912,9 +953,103 @@ function seatChanged(t) {
   $('#tDupNote').hidden = !dup;
 }
 function bindPic(t) {
-  $('#tPic').querySelectorAll('.seat').forEach(s => s.onclick = () => {
-    const inp = $(`#tabTable input[data-i="${s.dataset.i}"]`); if (inp) { inp.focus(); inp.select(); }
+  $('#tPic').querySelectorAll('.seat').forEach(s => {
+    const i = +s.dataset.i;
+    s.onpointerdown = e => {
+      if (e.button !== 0 || !t.names[i] || !t.names[i].trim()) return;
+      startSeatDrag(e, t, i); e.preventDefault();
+    };
+    s.onclick = () => { if (!t.names[i] || !t.names[i].trim()) focusSeat(i); };
   });
+}
+function focusSeat(i) { const inp = $(`#tabTable input[data-i="${i}"]`); if (inp) { inp.focus(); inp.select(); } }
+
+/* ---------- 자리끼리 옮기기 ----------
+   오른쪽 테이블 그림의 자리나 배치도의 의자를 끌어 다른 자리(다른 테이블 의자도)에 놓는다.
+   같은 테이블: 두 자리를 그대로 바꾼다 (시트에는 안 적힘, 자리 순서만).
+   다른 테이블: 한 사람 자리끼리는 바꾸고 (시트의 배정 테이블이 바뀜), 일행이 있는 하객은 일행 전체가 그 테이블로 옮긴다
+   (시트는 한 줄에 테이블 하나라서). 테이블 몸통에 놓으면 그 테이블 빈자리로. */
+let seatDrag = null;
+function seatTarget(x, y) {
+  const el0 = document.elementFromPoint(x, y);
+  if (!el0) return null;
+  const ps = el0.closest('#tPic .seat');
+  if (ps && selected) return { t: byId(selected), j: +ps.dataset.i, el: ps };
+  const ch = el0.closest('.chair-hit'), tg = el0.closest('.tbl');
+  if (ch && tg) return { t: byId(tg.dataset.id), j: +ch.dataset.i, el: tg.querySelector(`.chair[data-i="${ch.dataset.i}"]`) };
+  if (tg) return { t: byId(tg.dataset.id), j: null, el: tg };
+  return null;
+}
+function startSeatDrag(e, t, i) {
+  if (S.pick || seatDrag) return;
+  const g = guestOfSeat(t, i);
+  seatDrag = { t, i, x: e.clientX, y: e.clientY, ghost: null, over: null };
+  const move = ev => {
+    const d = seatDrag; if (!d) return;
+    if (!d.ghost && Math.hypot(ev.clientX - d.x, ev.clientY - d.y) < 5) return;
+    if (!d.ghost) {
+      document.body.classList.add('dragging-guest');
+      d.ghost = document.createElement('div'); d.ghost.className = 'ghost';
+      d.ghost.textContent = `${t.names[i].trim()}${g && g.count > 1 ? ` (일행 ${g.count}명 함께)` : ''}`;
+      document.body.appendChild(d.ghost);
+      $(`#tPic .seat[data-i="${i}"]`)?.classList.add('dragfrom');
+    }
+    d.ghost.style.left = ev.clientX + 'px'; d.ghost.style.top = ev.clientY + 'px';
+    const tg = seatTarget(ev.clientX, ev.clientY);
+    if (d.over && (!tg || d.over !== tg.el)) d.over.classList.remove('drop');
+    if (tg && tg.el) { tg.el.classList.add('drop'); d.over = tg.el; } else d.over = null;
+  };
+  const up = async ev => {
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up);
+    document.body.classList.remove('dragging-guest');
+    const d = seatDrag; seatDrag = null;
+    if (!d) return;
+    if (d.over) d.over.classList.remove('drop');
+    if (!d.ghost) {   // 끌지 않고 눌렀으면 그 테이블을 고르고 자리 칸으로
+      if (selected !== t.id) select(t.id); focusSeat(i); return;
+    }
+    d.ghost.remove();
+    const tg = seatTarget(ev.clientX, ev.clientY);
+    if (tg) await moveSeat(t, i, tg.t, tg.j);
+    else renderPanel();
+  };
+  window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+}
+function swapSeat(a, i, b, j) {
+  const tmp = [b.names[j], b.gids[j], b.slots[j]];
+  setSeat(b, j, a.names[i], a.gids[i], a.slots[i]);
+  setSeat(a, i, tmp[0], tmp[1], tmp[2]);
+}
+async function moveSeat(st, si, dt, dj) {
+  const name = (st.names[si] || '').trim();
+  if (!name || (st === dt && dj === si)) { renderPanel(); return; }
+  const sg = guestOfSeat(st, si);
+  if (st === dt) {
+    if (dj == null) { renderPanel(); return; }
+    swapSeat(st, si, dt, dj); commit(); refreshTable(st); renderPanel();
+    return;
+  }
+  if (sg && sg.count > 1) {
+    // 일행 통째로 옮긴다. 놓은 자리가 비어 있으면 끌고 온 사람을 그 자리에
+    const empty = dj != null && !(dt.names[dj] || '').trim();
+    await assignGuest(sg, dt, empty ? dj : null, st.slots[si]);
+    return;
+  }
+  if (dj == null) {
+    let j = dt.names.findIndex(n => !n.trim());
+    if (j < 0) {
+      if (dt.names.length >= MAX_SEATS) { toast(`${dt.no}번 테이블에 빈자리가 없어요`); renderPanel(); return; }
+      j = addSeat(dt);
+    }
+    dj = j;
+  }
+  const dg = guestOfSeat(dt, dj);
+  if (dg && dg.count > 1) { toast(`${dg.name} 님은 일행 ${dg.count}명이 함께 앉아 있어 한 자리만 바꿀 수 없어요. 빈자리에 놓아 주세요`, 4200); renderPanel(); return; }
+  const other = (dt.names[dj] || '').trim();
+  swapSeat(st, si, dt, dj);
+  trimSeats(st); trimSeats(dt);
+  commit(); renderAll();
+  toast(`${name} 님을 ${dt.no}번 테이블 ${dj + 1}번 자리로 옮겼어요` + (other ? ` (${other} 님은 ${st.no}번으로)` : ''));
 }
 
 /* ---------- 하객 칸 (시트) ---------- */
@@ -1081,13 +1216,13 @@ function importPaste() {
     else name = cells.slice(1).join(' ').trim();
     if (!t || !name) { skipped.push(line); continue; }
     if (seat != null && seat >= 0 && seat < MAX_SEATS) {
-      while (t.names.length <= seat) { t.names.push(''); t.gids.push(''); }
+      while (t.names.length <= seat) addSeat(t);
       if (t.cap < t.names.length) t.cap = t.names.length;
       if (!t.gids[seat]) { t.names[seat] = name; put++; continue; }
     }
     const i = t.names.findIndex(n => !n.trim());
-    if (i >= 0) { t.names[i] = name; t.gids[i] = ''; put++; }
-    else if (t.names.length < MAX_SEATS) { t.names.push(name); t.gids.push(''); t.cap = Math.max(t.cap, t.names.length); put++; }
+    if (i >= 0) { setSeat(t, i, name); put++; }
+    else if (t.names.length < MAX_SEATS) { addSeat(t, name); t.cap = Math.max(t.cap, t.names.length); put++; }
     else skipped.push(line);
   }
   commit(); renderTables(); renderListTab(); renderStats();
@@ -1125,7 +1260,7 @@ function freeSpot(near = [165, 318]) {
 }
 function newTable(no, cap = DEFAULT_SEATS) {
   const [x, y] = freeSpot();
-  const t = { id: 't' + (state.nextId++), no, x, y, group: '', cap, names: Array(cap).fill(''), gids: Array(cap).fill('') };
+  const t = { id: 't' + (state.nextId++), no, x, y, group: '', cap, names: Array(cap).fill(''), gids: Array(cap).fill(''), slots: Array(cap).fill(-1) };
   state.tables.push(t);
   return t;
 }
@@ -1162,7 +1297,7 @@ const hash = s => { let h = 0; for (let i = 0; i < s.length; i++) h = ((h << 5) 
 // 시트 숨긴 탭에 두는 배치 (시트 하객 자리의 이름은 시트에서 다시 만들므로 비운다. 그룹명과 정원은 시트 표가 정본)
 function layoutOf(s) {
   return { v: 2, nextId: s.nextId, tables: s.tables.map(t => ({ id: t.id, no: t.no, x: t.x, y: t.y, cap: t.cap,
-    names: t.names.map((n, i) => t.gids[i] ? '' : n), gids: t.gids })) };
+    names: t.names.map((n, i) => t.gids[i] ? '' : n), gids: t.gids, slots: t.slots.map((v, i) => t.gids[i] ? v : -1) })) };
 }
 function snapshot(s) {
   const assign = {}, tables = {};
@@ -1248,28 +1383,30 @@ function applyRemote(r, base) {
     if (!t) t = newTable(st.no, Math.max(1, st.cap || DEFAULT_SEATS));
     t.group = st.memo || '';
     if (st.cap >= 1) t.cap = Math.min(MAX_SEATS, st.cap);
-    while (t.names.length < t.cap) { t.names.push(''); t.gids.push(''); }
+    while (t.names.length < t.cap) addSeat(t);
   }
   // 시트 하객이 아니거나 다른 테이블로 옮겨진 자리는 비운다
   for (const t of state.tables) t.gids.forEach((k, i) => {
     if (!k) return;
     const g = S.byKey.get(k);
-    if (!g || g.table !== t.no) { t.names[i] = ''; t.gids[i] = ''; }
+    if (!g || g.table !== t.no) clearSeat(t, i);
   });
   // 시트에 배정된 하객을 그 테이블에 앉힌다 (있던 자리는 그대로, 인원이 바뀌면 늘리고 줄인다)
   for (const g of S.guests) {
     if (!g.table) continue;
     const t = byNo(g.table) || newTable(g.table);
+    // 있던 자리는 일행 순번 순서로 두고 (자리를 바꿔 둔 것을 지키려고), 인원이 줄면 뒤 순번부터 빼고 늘면 빈자리에 더한다
     let have = [];
     t.gids.forEach((k, i) => { if (k === g.key) have.push(i); });
-    while (have.length > g.count) { const i = have.pop(); t.names[i] = ''; t.gids[i] = ''; }
+    have.sort((a, b) => (t.slots[a] - t.slots[b]) || (a - b));
+    while (have.length > g.count) clearSeat(t, have.pop());
     if (have.length < g.count) {
       const free = new Set(); t.names.forEach((n, i) => { if (!n.trim()) free.add(i); });
       let need = g.count - have.length;
-      while (free.size < need) { free.add(t.names.length); t.names.push(''); t.gids.push(''); }
-      have = have.concat(chooseSeats(t, need, free));
+      while (free.size < need) free.add(addSeat(t));
+      have = have.concat(chooseSeats(t, need, free).sort((a, b) => a - b));
     }
-    have.sort((a, b) => a - b).forEach((i, k) => { t.names[i] = g.labels[k]; t.gids[i] = g.key; });
+    have.forEach((i, k) => setSeat(t, i, g.labels[k], g.key, k));
   }
   state.tables.forEach(trimSeats);
   // 시트에서 읽은 그대로를 "맞춘 상태" 로 둔다 (그 뒤에 바꾼 것만 시트에 적는다)
@@ -1311,18 +1448,18 @@ function reapply(ops) {
   for (const op of ops.tables || []) {
     const t = byNo(op.no); if (!t) continue;
     if ('memo' in op) t.group = op.memo;
-    if ('cap' in op) { t.cap = op.cap; while (t.names.length < t.cap) { t.names.push(''); t.gids.push(''); } }
+    if ('cap' in op) { t.cap = op.cap; while (t.names.length < t.cap) addSeat(t); }
   }
   for (const op of ops.rename || []) { const seats = guestSeats(state, op.key); if (seats.length) seats[0].t.names[seats[0].i] = op.name; }
   for (const op of ops.comp || []) guestSeats(state, op.key).forEach(({ t, i }, k) => { if (op.labels[k]) t.names[i] = op.labels[k]; });
   for (const op of ops.assign || []) {
     const g = S.byKey.get(op.key); if (!g) continue;
-    const mine = seatsOf(g.key); mine.forEach(({ t, i }) => { t.names[i] = ''; t.gids[i] = ''; });
+    const mine = seatsOf(g.key); mine.forEach(({ t, i }) => clearSeat(t, i));
     const t = op.table && byNo(op.table);
     if (t) {
       const free = new Set(); t.names.forEach((n, i) => { if (!n.trim()) free.add(i); });
-      while (free.size < g.count) { free.add(t.names.length); t.names.push(''); t.gids.push(''); }
-      chooseSeats(t, g.count, free).sort((a, b) => a - b).forEach((i, k) => { t.names[i] = g.labels[k]; t.gids[i] = g.key; });
+      while (free.size < g.count) free.add(addSeat(t));
+      chooseSeats(t, g.count, free).sort((a, b) => a - b).forEach((i, k) => setSeat(t, i, g.labels[k], g.key, k));
     }
   }
   state.tables.forEach(trimSeats);
