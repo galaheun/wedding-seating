@@ -275,6 +275,8 @@ dialog label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var
   <label>비밀번호<input id="sToken" name="seating-key" type="text" autocomplete="off" spellcheck="false" class="masked"></label>
   <label>작업하는 사람 (누가 저장했는지 남겨요, 선택)<input id="sWho" name="seating-who" type="text" placeholder="예: 채흔" maxlength="20" autocomplete="off"></label>
   <p id="sMsg" class="note" hidden></p>
+  <details id="sErr" class="note"><summary>최근 오류 기록 <span id="sErrN"></span></summary><pre id="sErrList" style="white-space:pre-wrap;font-size:11px;max-height:180px;overflow:auto;margin:6px 0 0"></pre></details>
+  <p class="note" id="sBuild"></p>
   <div class="dlg-row"><button id="sOff" class="danger grow">연결 끊기</button><button id="sClose">닫기</button><button id="sGo" class="primary">연결</button></div>
 </dialog>
 <dialog id="askDlg">
@@ -1365,10 +1367,36 @@ function loadSheetCfg() { try { return JSON.parse(localStorage.getItem(SHEET_KEY
 function saveSheetCfg() {
   try { localStorage.setItem(SHEET_KEY, JSON.stringify({ api: S.api, token: S.token, who: S.who, synced: S.synced, clientId: S.clientId, baseLayout: S.baseLayout })); } catch (e) {}
 }
+// 편집기 판 (시트 연결 창 아래에 보인다. 오류를 물어볼 때 어느 판인지 알려고)
+const BUILD = '2026-10-07c';
+// 시트 서버(Apps Script)는 가끔 늦거나(바쁨, 시간 초과) 오류 화면을 돌려준다. 최근 오류 30개를 이 브라우저에 남겨 연결 창에서 보여 준다
+const ERR_KEY = 'gala-seating-errors-v1';
+function logErr(where, msg) {
+  try {
+    const a = JSON.parse(localStorage.getItem(ERR_KEY) || '[]');
+    a.push({ at: new Date().toLocaleString('ko-KR'), where, msg: String(msg).slice(0, 300), build: BUILD });
+    localStorage.setItem(ERR_KEY, JSON.stringify(a.slice(-30)));
+  } catch (e) {}
+}
+// 60초 안에 답이 없으면 끊는다 (예전엔 답이 안 오면 "적는 중" 에 멈춰 그 뒤로 아무것도 적지 못했다)
 async function api(action, body = {}) {
-  const res = await fetch(S.api, { method: 'POST', body: JSON.stringify({ token: S.token, action, ...body }), redirect: 'follow' });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return res.json();
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 60000);
+  try {
+    const res = await fetch(S.api, { method: 'POST', body: JSON.stringify({ token: S.token, action, ...body }), redirect: 'follow', signal: ctl.signal });
+    if (!res.ok) throw Object.assign(new Error('시트 서버 응답 ' + res.status), { retry: true });
+    const text = await res.text();
+    try { return JSON.parse(text); }
+    catch (e) { throw Object.assign(new Error('시트 서버가 오류 화면을 줬어요: ' + text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120)), { retry: true }); }
+  } catch (e) {
+    if (e.name === 'AbortError') throw Object.assign(new Error('시트 서버가 60초 안에 답하지 않았어요'), { retry: true });
+    if (e instanceof TypeError) throw Object.assign(new Error('인터넷 연결 또는 시트 서버에 닿지 못했어요 (' + e.message + ')'), { retry: true });
+    throw e;
+  } finally { clearTimeout(timer); }
+}
+// 시트 서버가 돌려준 실패를 오류로 (비밀번호 말고는 잠시 뒤 다시 하면 되는 것들)
+function apiError(r) {
+  const msg = r.error === 'auth' ? '비밀번호가 맞지 않아요' : r.error === 'busy' ? '다른 분이 적는 중이라 시트가 바빴어요' : (r.message || r.error || '알 수 없는 오류');
+  return Object.assign(new Error(msg), { retry: r.error !== 'auth' });
 }
 function setSync(kind, text) {
   const b = $('#sheetBtn');
@@ -1596,7 +1624,7 @@ async function pull(manual, preferRemote) {
   try {
     setSync('busy', '시트 불러오는 중');
     const r = await api('load');
-    if (!r.ok) throw new Error(r.error === 'auth' ? '비밀번호가 맞지 않아요' : (r.message || r.error));
+    if (!r.ok) throw apiError(r);
     // 불러오는 동안 바꾼 것까지 담으려고 응답을 받은 뒤에 센다
     const pending = preferRemote ? diffOps(state, null) : diffOps(state, S.synced);
     const layoutPending = !preferRemote && !!S.synced && hash(JSON.stringify(layoutOf(state))) !== S.synced.layoutHash;
@@ -1614,7 +1642,9 @@ async function pull(manual, preferRemote) {
     else if (manual) toast(`시트에서 불러왔어요 (하객 ${S.guests.length}줄, 테이블 ${S.sheetTables.size}개)`);
     if (opCount(pending) || layoutPending) S.again = true;
   } catch (e) {
-    setSync('err', '시트 연결 오류'); toast('시트를 불러오지 못했어요: ' + e.message, 4200);
+    logErr('불러오기', e.message);
+    setSync('err', '시트 불러오기 실패 (누르면 다시)');
+    if (manual) toast('시트를 불러오지 못했어요: ' + e.message, 4200);
   } finally {
     S.busy = false;
     if (S.again) { S.again = false; schedulePush(true); } else saveOutbox();
@@ -1701,10 +1731,10 @@ function restoreOutbox(ob) {
   committed = JSON.stringify(state); persist();
 }
 
-let pushTimer;
+let pushTimer, retryTimer;
 function schedulePush(now) {
   if (!S.on) return;
-  clearTimeout(pushTimer);
+  clearTimeout(pushTimer); clearTimeout(retryTimer);
   setSync('busy', '시트에 적는 중');
   saveOutbox();
   pushTimer = setTimeout(push, now ? 0 : 700);
@@ -1746,7 +1776,8 @@ async function push(force) {
       if (v === 'yes') { S.massOk = true; S.bigOk = true; next = () => push(); } else next = () => pull(true, true);
       return;
     }
-    if (!r.ok) throw new Error(r.error === 'auth' ? '비밀번호가 맞지 않아요' : (r.message || r.error));
+    if (!r.ok) throw apiError(r);
+    S.fails = 0;
     S.version = r.version; S.stamp = r.stamp || S.stamp; S.apiVersion = r.api || S.apiVersion;
     let touched = false;
     if (r.keys) touched = remapKeys(r.keys, ops, snap) || touched;
@@ -1771,8 +1802,16 @@ async function push(force) {
     setSync('ok', `시트 저장됨 ${new Date().toTimeString().slice(0, 5)}`);
     if (warn.length) { toast(warn.join('. ') + '. 시트에서 다시 불러올게요', 5000); next = () => pull(); }
   } catch (e) {
-    setSync('err', '시트 저장 실패 (누르면 다시)');
-    toast('시트에 적지 못했어요: ' + e.message + '. 이 브라우저에는 저장돼 있어요', 4500);
+    logErr('저장', e.message);
+    S.fails = (S.fails || 0) + 1;
+    const wait = e.retry ? [3, 8, 20, 45][S.fails - 1] : 0;
+    if (wait) {   // 잠깐 실패는 조용히 다시 적는다 (3초, 8초, 20초, 45초 뒤)
+      setSync('busy', `시트 저장 다시 시도 (${S.fails}번째)`);
+      clearTimeout(retryTimer); retryTimer = setTimeout(() => { if (S.on) push(); }, wait * 1000);
+    } else {
+      setSync('err', '시트 저장 실패 (누르면 다시)');
+      toast('시트에 적지 못했어요: ' + e.message + '. 이 브라우저에는 저장돼 있어요. 위의 시트 단추를 누르면 다시 적어요', 6000);
+    }
   } finally {
     S.busy = false;
     if (next) next();
@@ -1800,7 +1839,7 @@ setInterval(async () => {
     const r = await api('version');
     if (r.ok) S.apiVersion = r.api || S.apiVersion;
     if (r.ok && (r.version !== S.version || (r.stamp && r.stamp !== S.stamp)) && !S.busy && !hasPending()) { await pull(); toast('시트에서 바뀐 내용을 불러왔어요'); }
-  } catch (e) {}
+  } catch (e) { logErr('살펴보기', e.message); }
 }, 30000);
 
 async function connect(apiUrl, token, who) {
@@ -1809,7 +1848,7 @@ async function connect(apiUrl, token, who) {
   S.clientId = cfg0.clientId || Math.random().toString(36).slice(2, 10);
   setSync('busy', '시트 연결 중');
   const r = await api('load');
-  if (!r.ok) throw new Error(r.error === 'auth' ? '비밀번호가 맞지 않아요' : (r.message || r.error || '연결 실패'));
+  if (!r.ok) throw apiError(r);
   const prev = cfg0.synced;
   setGuests(r.guests || []);
   S.apiVersion = r.api || 1; S.splits = [];
@@ -1853,9 +1892,16 @@ function openSheetDlg() {
   $('#sMsg').hidden = true;
   $('#sOff').hidden = !S.on;
   $('#sGo').textContent = S.on ? '다시 연결' : '연결';
+  let errs = []; try { errs = JSON.parse(localStorage.getItem(ERR_KEY) || '[]'); } catch (e) {}
+  $('#sErr').hidden = !errs.length; $('#sErrN').textContent = errs.length ? `(${errs.length})` : '';
+  $('#sErrList').textContent = errs.slice().reverse().map(x => `${x.at}  ${x.where}  ${x.msg}`).join('\n');
+  $('#sBuild').textContent = `편집기 판 ${BUILD}${S.apiVersion ? `, 시트 코드 ${S.apiVersion}판` : ''}`;
   d.showModal();
 }
-$('#sheetBtn').onclick = () => { if (S.on && $('#sheetBtn').classList.contains('err')) push(); else openSheetDlg(); };
+$('#sheetBtn').onclick = () => {
+  if (S.on && $('#sheetBtn').classList.contains('err')) { S.fails = 0; if (hasPending()) push(); else pull(true); }
+  else openSheetDlg();
+};
 $('#sClose').onclick = () => $('#sheetDlg').close();
 $('#sGo').onclick = async () => {
   const msg = $('#sMsg'), apiUrl = $('#sApi').value.trim(), tk = $('#sToken').value.trim();
@@ -1999,7 +2045,13 @@ Promise.all(fontsReady).then(() => {
   // 자동 채우기로 검색 칸에 글자가 들어와 있으면 (주소면 지워진다)
   setTimeout(() => { if ($('#search').value) setQuery($('#search').value); }, 800);
   const cfg = loadSheetCfg();
-  if (cfg.api && cfg.token) connect(cfg.api, cfg.token, cfg.who).catch(e => { S.on = false; setSync('err', '시트 연결 오류'); toast('시트에 연결하지 못했어요: ' + e.message, 4200); });
+  // 처음 연결이 시트 서버 사정으로 실패하면 5초, 15초, 40초 뒤에 다시 (비밀번호가 틀리면 바로 알림)
+  const boot = (k = 0) => connect(cfg.api, cfg.token, cfg.who).catch(e => {
+    S.on = false; logErr('연결', e.message);
+    if (e.retry && k < 3) { setSync('busy', `시트 연결 다시 시도 (${k + 1}번째)`); setTimeout(() => boot(k + 1), [5, 15, 40][k] * 1000); return; }
+    setSync('err', '시트 연결 오류'); toast('시트에 연결하지 못했어요: ' + e.message, 4200);
+  });
+  if (cfg.api && cfg.token) boot();
   else if (CFG.api) setSync('', '구글 시트 연결');
 });
 </script>
