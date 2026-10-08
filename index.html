@@ -760,7 +760,7 @@ map.addEventListener('pointerdown', e => {
     if (ct.names[ci] && ct.names[ci].trim()) { startSeatDrag(e, ct, ci); e.preventDefault(); return; }
   }
   const t = byId(g.dataset.id), p = toSvg(e);
-  drag = { t, g, dx: p.x - t.x, dy: p.y - t.y, sx: e.clientX, sy: e.clientY, moved: false };
+  drag = { t, g, dx: p.x - t.x, dy: p.y - t.y, sx: e.clientX, sy: e.clientY, ox: t.x, oy: t.y, moved: false, target: null };
   map.setPointerCapture(e.pointerId);
   e.preventDefault();
 });
@@ -773,12 +773,41 @@ map.addEventListener('pointermove', e => {
   drag.t.y = Math.round(clampY(p.y - drag.dy) * 10) / 10;
   drag.g.setAttribute('transform', `translate(${drag.t.x} ${drag.t.y})`);
   updateOverlapClasses();
+  // 다른 테이블 위에 올리면 그 테이블과 자리를 바꾼다 (놓을 때 묻는다)
+  const tg = state.tables.filter(o => o !== drag.t).map(o => [o, Math.hypot(o.x - drag.t.x, o.y - drag.t.y)])
+    .filter(([, d]) => d < SWAP_REACH).sort((a, b) => a[1] - b[1])[0]?.[0] || null;
+  if (tg !== drag.target) {
+    if (drag.target) map.querySelector(`.tbl[data-id="${drag.target.id}"]`)?.classList.remove('drop');
+    if (tg) { map.querySelector(`.tbl[data-id="${tg.id}"]`)?.classList.add('drop'); toast(`놓으면 ${tg.no}번 테이블과 자리를 바꿔요`, 1600); }
+    drag.target = tg;
+  }
 });
-function endDrag() {
+async function endDrag() {
   if (!drag) return;
-  const { t, moved } = drag; drag.g.classList.remove('dragging'); drag = null;
-  if (moved) { commit(); if (selected !== t.id) select(t.id); }
-  else select(t.id);
+  const { t, moved, target, ox, oy } = drag; drag.g.classList.remove('dragging'); drag = null;
+  if (!moved) { select(t.id); return; }
+  if (!target) { commit(); if (selected !== t.id) select(t.id); return; }
+  // 끌던 테이블은 제자리로 돌려 두고 묻는다
+  t.x = ox; t.y = oy; renderTables();
+  const n = x => x.names.filter(v => v.trim()).length;
+  const v = await ask('테이블 자리 바꾸기', `${t.no}번 테이블${t.group.trim() ? ` (${t.group.trim()})` : ''}을 ${target.no}번 자리로 옮겨요.\n`
+    + `두 테이블의 그룹명, 정원, 하객이 서로 바뀌어요. 번호는 자리를 따라가서 ${t.no}번에 앉은 ${n(t)}명은 ${target.no}번 테이블, ${target.no}번에 앉은 ${n(target)}명은 ${t.no}번 테이블이 돼요.`
+    + (S.on ? '\n시트의 배정 테이블과 두 테이블의 메모, 정원도 함께 바뀌어요.' : ''),
+    [{ v: 'swap', label: '자리 바꾸기', cls: 'primary' }, { v: null, label: '취소' }]);
+  // 묻는 동안 시트를 다시 읽었을 수 있으니 번호로 다시 찾는다
+  const a = byId(t.id), b = byId(target.id);
+  if (v !== 'swap' || !a || !b) { renderAll(); return; }
+  const an = a.no, bn = b.no;
+  swapTables(a, b);
+  commit(); renderAll(); select(b.id);
+  toast(`${an}번과 ${bn}번 테이블 자리를 바꿨어요 (번호와 명단도 함께)`, 3600);
+}
+// 두 테이블의 내용(그룹명, 정원, 자리)을 맞바꾼다. 위치와 번호는 그대로라 하객의 테이블 번호가 바뀐다
+const SWAP_REACH = T_R + 4;
+function swapTables(a, b) {
+  for (const k of ['group', 'cap', 'names', 'gids', 'slots']) [a[k], b[k]] = [b[k], a[k]];
+  // 나누는 중인 일행 자리도 새 번호로
+  S.splits.forEach(sp => { const t = state.tables.find(x => x.gids.includes('split:' + sp.tmp)); if (t) sp.table = t.no; });
 }
 map.addEventListener('pointerup', endDrag);
 map.addEventListener('pointercancel', endDrag);
@@ -1353,13 +1382,25 @@ $('#addTable').onclick = () => {
   const t = newTable(no); commit(); select(t.id);
   toast(`${no}번 테이블을 놓았어요. 끌어서 원하는 자리로 옮기세요` + (S.on ? ' (시트 테이블 표에도 한 줄 추가돼요)' : ''), 3600);
 };
-function renumber() {
-  if (S.on) { toast('시트와 연결 중에는 번호를 다시 매길 수 없어요 (시트의 배정 테이블이 모두 바뀌어서)', 4200); return; }
-  if (!confirm('테이블 번호를 자리 순서(위에서 아래, 같은 줄은 왼쪽에서 오른쪽)로 다시 매길까요?\n이름과 그룹명은 테이블을 따라가요.')) return;
-  const ts = [...state.tables].sort((a, b) => a.y - b.y), rows = [];
+// 자리 순서(위에서 아래, 같은 줄은 왼쪽에서 오른쪽)로 매길 번호
+function positionNumbers() {
+  const ts = [...state.tables].sort((a, b) => a.y - b.y), rows = [], out = new Map();
   for (const t of ts) { const r = rows[rows.length - 1]; if (r && Math.abs(r[0].y - t.y) < 10) r.push(t); else rows.push([t]); }
-  let no = 1; rows.forEach(r => r.sort((a, b) => a.x - b.x).forEach(t => { t.no = no++; }));
-  commit(); renderAll(); toast('번호를 다시 매겼어요');
+  let no = 1; rows.forEach(r => r.sort((a, b) => a.x - b.x).forEach(t => out.set(t.id, no++)));
+  return out;
+}
+async function renumber() {
+  const nos = positionNumbers(), moved = state.tables.filter(t => nos.get(t.id) !== t.no);
+  if (!moved.length) { toast('이미 자리 순서대로 번호가 매겨져 있어요'); return; }
+  const rows = new Set(); moved.forEach(t => t.gids.forEach(k => { if (k && S.byKey.has(k)) rows.add(k); }));
+  const v = await ask('번호 다시 매기기', `테이블 ${moved.length}개의 번호를 자리 순서(위에서 아래, 같은 줄은 왼쪽에서 오른쪽)로 바꿔요. 그룹명과 하객은 테이블을 따라가요.`
+    + (S.on ? `\n시트에서는 하객 ${rows.size}줄의 배정 테이블과 테이블 ${moved.length}개의 메모, 정원이 바뀌어요 (되돌리기로 되돌릴 수 있어요).` : ''),
+    [{ v: 'yes', label: '번호 다시 매기기', cls: 'primary' }, { v: null, label: '취소' }]);
+  if (v !== 'yes') return;
+  const now = positionNumbers();   // 묻는 동안 시트를 다시 읽었을 수 있으니 다시 센다
+  state.tables.forEach(t => { if (now.has(t.id)) t.no = now.get(t.id); });
+  S.splits.forEach(sp => { const t = state.tables.find(x => x.gids.includes('split:' + sp.tmp)); if (t) sp.table = t.no; });
+  commit(); renderAll(); toast('번호를 다시 매겼어요' + (S.on ? ' (시트에 적는 중)' : ''));
 }
 
 /* ---------- 구글 시트 연결 ---------- */
@@ -1368,7 +1409,7 @@ function saveSheetCfg() {
   try { localStorage.setItem(SHEET_KEY, JSON.stringify({ api: S.api, token: S.token, who: S.who, synced: S.synced, clientId: S.clientId, baseLayout: S.baseLayout })); } catch (e) {}
 }
 // 편집기 판 (시트 연결 창 아래에 보인다. 오류를 물어볼 때 어느 판인지 알려고)
-const BUILD = '2026-10-07c';
+const BUILD = '2026-10-08a';
 // 시트 서버(Apps Script)는 가끔 늦거나(바쁨, 시간 초과) 오류 화면을 돌려준다. 최근 오류 30개를 이 브라우저에 남겨 연결 창에서 보여 준다
 const ERR_KEY = 'gala-seating-errors-v1';
 function logErr(where, msg) {
