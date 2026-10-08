@@ -174,6 +174,8 @@ body.dragging-guest{user-select:none;-webkit-user-select:none;cursor:grabbing}
 .tbl.drop .ring,.picking .tbl:hover .ring{stroke:var(--ok);stroke-width:2.4;opacity:.9;stroke-dasharray:none}
 .picking .tbl{cursor:copy}
 .tbl.dim{opacity:.28}
+.tbl.mine .ring{stroke:var(--ink);stroke-width:2.6;opacity:.85;stroke-dasharray:none}
+.tbl .chair.picked{stroke:var(--ink);stroke-width:1.1}
 .tbl.overlap .top{stroke:var(--danger);stroke-dasharray:1.4 1}
 .tbl.full .top{fill:#F7F1E6}
 .tbl text{pointer-events:none}
@@ -368,7 +370,8 @@ function normalize(s) {
     t.slots.length = t.names.length;
     fixSlots(t);
   }
-  s.nextId = Math.max(s.nextId || 0, ...s.tables.map(t => parseInt(String(t.id).replace(/\D/g, ''), 10) || 0)) + 1;
+  // 다음 테이블 번호표는 가장 큰 id 다음 이상으로만 (예전엔 불릴 때마다 1씩 올라, 바뀐 것이 없어도 배치가 달라 보여 저장이 한 번 더 나갔다. 2026-10-08)
+  s.nextId = Math.max(s.nextId || 0, Math.max(0, ...s.tables.map(t => parseInt(String(t.id).replace(/\D/g, ''), 10) || 0)) + 1);
   return s;
 }
 // slots: 시트 하객 자리마다 그 하객 일행 안의 순번 (0 = 본인, 1.. = 동반인). 자리를 서로 바꿔도 누가 본인인지 섞이지 않게
@@ -690,7 +693,7 @@ function tableNode(t) {
   const n = t.names.length;
   t.names.forEach((name, i) => {
     const a = (-90 + i * 360 / n) * Math.PI / 180, gu = guestOfSeat(t, i);
-    const cls = 'chair' + (name.trim() ? (gu ? ' ' + (sideCls(gu.side) || 'on') : ' on') : '') + (i >= t.cap ? ' over' : '');
+    const cls = 'chair' + (name.trim() ? (gu ? ' ' + (sideCls(gu.side) || 'on') : ' on') : '') + (i >= t.cap ? ' over' : '') + (S.pick && t.gids[i] === S.pick ? ' picked' : '');
     const cx = CHAIR_R * Math.cos(a), cy = CHAIR_R * Math.sin(a);
     el('circle', { class: cls, cx, cy, r: CHAIR_SIZE, 'data-i': i }, g);
     // 의자를 잡기 쉽게 보이지 않는 큰 원 (이름이 있으면 끌어서 다른 자리로)
@@ -723,6 +726,7 @@ function renderTables() {
     if (t.id === selected) g.classList.add('sel');
     if (query) g.classList.add(matches(t) ? 'hitq' : 'dim');
     if (ov.has(t.id)) g.classList.add('overlap');
+    if (S.pick && t.gids.includes(S.pick)) g.classList.add('mine');   // 고른 하객이 지금 앉은 테이블
     layer.appendChild(g);
   }
   const s = layer.querySelector('.sel'); if (s) layer.appendChild(s);
@@ -823,7 +827,10 @@ function setPick(key) {
   S.pick = key;
   const g = key && S.byKey.get(key);
   $('#pickbar').hidden = !g;
-  if (g) $('#pickText').textContent = `${g.name} 님${g.count > 1 ? ` 일행 ${g.count}명` : ''}: 앉힐 테이블을 누르세요`;
+  if (g) {
+    const nos = [...new Set(seatsOf(g.key).map(p => p.t.no))].sort((a, b) => a - b);
+    $('#pickText').textContent = `${g.name} 님${g.count > 1 ? ` 일행 ${g.count}명` : ''}` + (nos.length ? ` (지금 ${nos.join(', ')}번 테이블): 옮길 테이블을 누르세요` : ': 앉힐 테이블을 누르세요');
+  }
   renderTables();
   if (tab === 'guests') renderGuestsTab();
 }
@@ -1177,8 +1184,10 @@ function renderGuestList() {
   });
   const live = S.guests.filter(g => !g.off), noneN = live.filter(g => !seatedNo.has(g.key));
   const ppl = arr => arr.reduce((s, g) => s + g.count, 0);
-  const labels = { none: `자리 없음 ${noneN.length}`, seated: `자리 있음 ${live.length - noneN.length}`, all: `전체 ${S.guests.length}` };
-  $('#tabGuests').querySelectorAll('[data-gf]').forEach(b => { b.textContent = labels[b.dataset.gf]; b.classList.toggle('on', !q && b.dataset.gf === gFilter); });
+  // 단추 숫자는 사람 수 (시트 대시보드의 미배정, 배정 완료, 총 참석 인원과 같은 단위). 줄 수는 단추에 올리면 보인다
+  const seatedN = live.filter(g => seatedNo.has(g.key));
+  const labels = { none: [`자리 없음 ${ppl(noneN)}명`, `${noneN.length}줄`], seated: [`자리 있음 ${ppl(seatedN)}명`, `${seatedN.length}줄`], all: [`전체 ${ppl(live)}명`, `${S.guests.length}줄 (불참 포함)`] };
+  $('#tabGuests').querySelectorAll('[data-gf]').forEach(b => { b.textContent = labels[b.dataset.gf][0]; b.title = labels[b.dataset.gf][1]; b.classList.toggle('on', !q && b.dataset.gf === gFilter); });
   let html = q ? `<p class="note">"${esc(gQuery.trim())}" 찾은 하객 ${list.length}줄 (자리 있는 하객 포함)</p>`
     : `<p class="note">자리 없는 하객 ${noneN.length}줄 (${ppl(noneN)}명). 하객을 배치도의 테이블로 끌어다 놓거나, 하객을 누른 뒤 테이블을 누르세요. 한 줄의 인원만큼 자리를 차지해요.</p>`;
   if (!list.length) html += `<div class="empty">${gFilter === 'none' && !q ? '<b>모든 하객이 자리에 앉았어요</b>' : '찾는 하객이 없어요'}</div>`;
@@ -1411,7 +1420,7 @@ function saveSheetCfg() {
   try { localStorage.setItem(SHEET_KEY, JSON.stringify({ api: S.api, token: S.token, who: S.who, synced: S.synced, clientId: S.clientId, baseLayout: S.baseLayout })); } catch (e) {}
 }
 // 편집기 판 (시트 연결 창 아래에 보인다. 오류를 물어볼 때 어느 판인지 알려고)
-const BUILD = '2026-10-08b';
+const BUILD = '2026-10-08c';
 // 시트 서버(Apps Script)는 가끔 늦거나(바쁨, 시간 초과) 오류 화면을 돌려준다. 최근 오류 30개를 이 브라우저에 남겨 연결 창에서 보여 준다
 const ERR_KEY = 'gala-seating-errors-v1';
 function logErr(where, msg) {
