@@ -69,6 +69,7 @@ main{display:grid;grid-template-columns:minmax(0,1fr) 410px;gap:16px;padding:16p
 .map-tools span{font-size:12px;color:var(--sub)}
 .pickbar{display:flex;align-items:center;gap:10px;background:var(--ink);color:#fff;border-radius:10px;padding:8px 12px;margin-bottom:8px;font-size:13px}
 .pickbar button{margin-left:auto;padding:5px 10px;background:transparent;color:#fff;border-color:rgba(255,255,255,.4)}
+.netbar{background:#8A4B2F}
 #map{display:block;width:100%;height:calc(100vh - 170px);min-height:420px;touch-action:none;user-select:none;-webkit-user-select:none}
 .hint{margin:8px 2px 0;font-size:12px;color:var(--sub);line-height:1.6}
 .legend{display:inline-flex;gap:10px;margin-left:6px}
@@ -254,6 +255,7 @@ dialog label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var
       <span id="searchInfo"></span>
     </div>
     <div class="pickbar" id="pickbar" hidden><span id="pickText"></span><button id="pickCancel">취소</button></div>
+    <div class="pickbar netbar" id="netbar" hidden><span id="netText"></span><button id="netRetry">지금 다시</button></div>
     <svg id="map" viewBox="-4 -4 351 397" aria-label="좌석 배치도"></svg>
     <p class="hint">테이블을 끌어서 옮기고, 눌러서 이름을 넣으세요. 이름이 있는 의자를 끌어 다른 의자에 놓으면 자리가 바뀌어요. 선택한 테이블은 방향키로 조금씩(Shift 는 크게) 옮길 수 있어요. 작업은 이 브라우저에 저절로 저장돼요.
       <span class="legend"><span><i style="background:var(--groom)"></i>신랑측</span><span><i style="background:var(--bride)"></i>신부측</span><span><i style="background:var(--gold)"></i>직접 적은 이름</span></span></p>
@@ -1409,13 +1411,15 @@ function saveSheetCfg() {
   try { localStorage.setItem(SHEET_KEY, JSON.stringify({ api: S.api, token: S.token, who: S.who, synced: S.synced, clientId: S.clientId, baseLayout: S.baseLayout })); } catch (e) {}
 }
 // 편집기 판 (시트 연결 창 아래에 보인다. 오류를 물어볼 때 어느 판인지 알려고)
-const BUILD = '2026-10-08a';
+const BUILD = '2026-10-08b';
 // 시트 서버(Apps Script)는 가끔 늦거나(바쁨, 시간 초과) 오류 화면을 돌려준다. 최근 오류 30개를 이 브라우저에 남겨 연결 창에서 보여 준다
 const ERR_KEY = 'gala-seating-errors-v1';
 function logErr(where, msg) {
   try {
-    const a = JSON.parse(localStorage.getItem(ERR_KEY) || '[]');
-    a.push({ at: new Date().toLocaleString('ko-KR'), where, msg: String(msg).slice(0, 300), build: BUILD });
+    const a = JSON.parse(localStorage.getItem(ERR_KEY) || '[]'), m = String(msg).slice(0, 300), last = a[a.length - 1];
+    // 같은 오류가 10분 안에 되풀이되면 한 줄로 묶는다 (몇 번 났는지만 센다)
+    if (last && last.where === where && last.msg === m && Date.now() - (last.t || 0) < 600000) { last.n = (last.n || 1) + 1; last.t = Date.now(); last.at2 = new Date().toLocaleString('ko-KR'); }
+    else a.push({ at: new Date().toLocaleString('ko-KR'), t: Date.now(), where, msg: m, build: BUILD });
     localStorage.setItem(ERR_KEY, JSON.stringify(a.slice(-30)));
   } catch (e) {}
 }
@@ -1435,6 +1439,17 @@ async function api(action, body = {}) {
   } finally { clearTimeout(timer); }
 }
 // 시트 서버가 돌려준 실패를 오류로 (비밀번호 말고는 잠시 뒤 다시 하면 되는 것들)
+// 다시 시도 간격: 3초, 8초, 20초, 45초, 그 뒤로는 1분마다 (구글 쪽 장애가 몇 분씩 이어진 적이 있어 포기하지 않는다)
+const backoff = n => [3, 8, 20, 45][n - 1] || 60;
+// 시트에 못 닿고 있을 때 배치도 위에 띄우는 띠
+function netBar() {
+  const bar = $('#netbar'); if (!bar) return;
+  let text = '';
+  if (S.connecting) text = `시트에 연결하지 못해 다시 시도하고 있어요 (${S.connecting}번째). 연결되기 전에 바꾼 하객 자리와 이름은 시트에 적히지 않아요.`;
+  else if (S.on && (S.fails || 0) >= 3) text = `구글 시트 서버가 잠시 답하지 않아요. 바꾼 것은 이 브라우저에 남아 있고 자동으로 다시 적어요 (${S.fails}번째). 창은 닫지 마세요.`;
+  else if (S.on && (S.pullFails || 0) >= 3) text = '구글 시트 서버가 잠시 답하지 않아 다른 분이 바꾼 것을 아직 못 불러왔어요. 자동으로 다시 불러와요.';
+  bar.hidden = !text; $('#netText').textContent = text;
+}
 function apiError(r) {
   const msg = r.error === 'auth' ? '비밀번호가 맞지 않아요' : r.error === 'busy' ? '다른 분이 적는 중이라 시트가 바빴어요' : (r.message || r.error || '알 수 없는 오류');
   return Object.assign(new Error(msg), { retry: r.error !== 'auth' });
@@ -1678,14 +1693,20 @@ async function pull(manual, preferRemote) {
     applyRemote(r, base);
     reapply(pending);
     renderAll();
+    S.pullFails = 0; netBar();
     setSync('ok', '시트 연결됨');
     if (merged) toast(mergeMsg(r, merged), 4600);
     else if (manual) toast(`시트에서 불러왔어요 (하객 ${S.guests.length}줄, 테이블 ${S.sheetTables.size}개)`);
     if (opCount(pending) || layoutPending) S.again = true;
   } catch (e) {
     logErr('불러오기', e.message);
-    setSync('err', '시트 불러오기 실패 (누르면 다시)');
     if (manual) toast('시트를 불러오지 못했어요: ' + e.message, 4200);
+    if (e.retry) {   // 다시 불러온다 (못 적은 것이 있으면 적는 쪽부터)
+      S.pullFails = (S.pullFails || 0) + 1;
+      setSync('busy', `시트 불러오기 다시 시도 (${S.pullFails}번째)`);
+      clearTimeout(retryTimer); retryTimer = setTimeout(() => { if (!S.on) return; if (hasPending()) push(); else pull(); }, backoff(S.pullFails) * 1000);
+      netBar();
+    } else setSync('err', '시트 불러오기 실패 (누르면 다시)');
   } finally {
     S.busy = false;
     if (S.again) { S.again = false; schedulePush(true); } else saveOutbox();
@@ -1818,7 +1839,7 @@ async function push(force) {
       return;
     }
     if (!r.ok) throw apiError(r);
-    S.fails = 0;
+    S.fails = 0; S.pullFails = 0; netBar();
     S.version = r.version; S.stamp = r.stamp || S.stamp; S.apiVersion = r.api || S.apiVersion;
     let touched = false;
     if (r.keys) touched = remapKeys(r.keys, ops, snap) || touched;
@@ -1845,10 +1866,10 @@ async function push(force) {
   } catch (e) {
     logErr('저장', e.message);
     S.fails = (S.fails || 0) + 1;
-    const wait = e.retry ? [3, 8, 20, 45][S.fails - 1] : 0;
-    if (wait) {   // 잠깐 실패는 조용히 다시 적는다 (3초, 8초, 20초, 45초 뒤)
+    if (e.retry) {   // 잠깐 실패는 조용히 다시 적는다. 바꾼 것은 변경 기록(saveOutbox)에도 남아 있다
       setSync('busy', `시트 저장 다시 시도 (${S.fails}번째)`);
-      clearTimeout(retryTimer); retryTimer = setTimeout(() => { if (S.on) push(); }, wait * 1000);
+      clearTimeout(retryTimer); retryTimer = setTimeout(() => { if (S.on) push(); }, backoff(S.fails) * 1000);
+      netBar();
     } else {
       setSync('err', '시트 저장 실패 (누르면 다시)');
       toast('시트에 적지 못했어요: ' + e.message + '. 이 브라우저에는 저장돼 있어요. 위의 시트 단추를 누르면 다시 적어요', 6000);
@@ -1920,6 +1941,7 @@ async function connect(apiUrl, token, who) {
   saveSheetCfg();
   renderAll();
   setSync('ok', '시트 연결됨');
+  S.connecting = 0; S.fails = 0; S.pullFails = 0; netBar();
   if (ob) toast(`새로고침 전에 시트에 못 적은 변경 ${ob.n}건을 다시 적어요`, 4200);
   else if (merged) toast(mergeMsg(r, merged), 4600);
   schedulePush(true);
@@ -1935,7 +1957,7 @@ function openSheetDlg() {
   $('#sGo').textContent = S.on ? '다시 연결' : '연결';
   let errs = []; try { errs = JSON.parse(localStorage.getItem(ERR_KEY) || '[]'); } catch (e) {}
   $('#sErr').hidden = !errs.length; $('#sErrN').textContent = errs.length ? `(${errs.length})` : '';
-  $('#sErrList').textContent = errs.slice().reverse().map(x => `${x.at}  ${x.where}  ${x.msg}`).join('\n');
+  $('#sErrList').textContent = errs.slice().reverse().map(x => `${x.at}  ${x.where}  ${x.msg}${x.n > 1 ? `  (${x.n}번, 마지막 ${x.at2})` : ''}`).join('\n');
   $('#sBuild').textContent = `편집기 판 ${BUILD}${S.apiVersion ? `, 시트 코드 ${S.apiVersion}판` : ''}`;
   d.showModal();
 }
@@ -2087,11 +2109,18 @@ Promise.all(fontsReady).then(() => {
   setTimeout(() => { if ($('#search').value) setQuery($('#search').value); }, 800);
   const cfg = loadSheetCfg();
   // 처음 연결이 시트 서버 사정으로 실패하면 5초, 15초, 40초 뒤에 다시 (비밀번호가 틀리면 바로 알림)
-  const boot = (k = 0) => connect(cfg.api, cfg.token, cfg.who).catch(e => {
+  // 처음 연결이 시트 서버 사정으로 실패하면 끝까지 다시 시도하고(3초, 8초, 20초, 45초, 그 뒤 1분마다), 그동안은 배치도 위 띠로 알린다
+  let bootTimer;
+  const boot = (k = 0) => { clearTimeout(bootTimer); return connect(cfg.api, cfg.token, cfg.who).then(() => { S.connecting = 0; netBar(); }).catch(e => {
     S.on = false; logErr('연결', e.message);
-    if (e.retry && k < 3) { setSync('busy', `시트 연결 다시 시도 (${k + 1}번째)`); setTimeout(() => boot(k + 1), [5, 15, 40][k] * 1000); return; }
-    setSync('err', '시트 연결 오류'); toast('시트에 연결하지 못했어요: ' + e.message, 4200);
-  });
+    if (e.retry) { S.connecting = k + 1; netBar(); setSync('busy', `시트 연결 다시 시도 (${k + 1}번째)`); bootTimer = setTimeout(() => { if (!S.on) boot(k + 1); }, backoff(k + 1) * 1000); return; }
+    S.connecting = 0; netBar(); setSync('err', '시트 연결 오류'); toast('시트에 연결하지 못했어요: ' + e.message, 4200);
+  }); };
+  $('#netRetry').onclick = () => {
+    if (S.connecting) { boot(S.connecting); return; }
+    S.fails = 0; S.pullFails = 0; netBar();
+    if (hasPending()) push(); else pull(true);
+  };
   if (cfg.api && cfg.token) boot();
   else if (CFG.api) setSync('', '구글 시트 연결');
 });
